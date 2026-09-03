@@ -91,6 +91,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
     <button class="navbtn" data-tab="funding">⇅ Funding &amp; Transfers</button>
     <button class="navbtn" data-tab="subs">↻ Subscriptions</button>
     <button class="navbtn" data-tab="cards">▦ Credit Cards</button>
+    <button class="navbtn" data-tab="invest">▲ Investments</button>
     <button class="navbtn" data-tab="settings">⚙ Settings & Backup</button>
   </aside>
   <main class="main">
@@ -197,14 +198,31 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 
     <section id="cards" class="section">
       <div class="topbar"><div><h1>Credit Card Management</h1><div class="sub">Track debt separately from your pay-cycle cash flow. Card balances do not reduce cash on hand until you schedule a payment.</div></div><button class="btn primary" onclick="openCardModal()">Add credit card</button></div>
-      <div class="grid kpis" style="grid-template-columns:repeat(4,minmax(160px,1fr))">
-        <div class="card"><div class="kpi-label">Total card balance</div><div id="ccBalance" class="kpi-value">$0</div></div>
-        <div class="card"><div class="kpi-label">Total credit limit</div><div id="ccLimit" class="kpi-value">$0</div></div>
+      <div class="grid kpis" style="grid-template-columns:repeat(3,minmax(150px,1fr))">
+        <div class="card"><div class="kpi-label">Total owed</div><div id="ccBalance" class="kpi-value">$0</div><div class="kpi-foot">Across all cards</div></div>
+        <div class="card"><div class="kpi-label">Paid down, 30 days</div><div id="ccChange" class="kpi-value">—</div><div class="kpi-foot">Green means the balance fell</div></div>
+        <div class="card"><div class="kpi-label">Available credit</div><div id="ccAvail" class="kpi-value">—</div><div class="kpi-foot">Cards with a limit set</div></div>
+        <div class="card"><div class="kpi-label">Total credit limit</div><div id="ccLimit" class="kpi-value">—</div></div>
         <div class="card"><div class="kpi-label">Overall utilization</div><div id="ccUtil" class="kpi-value">0%</div></div>
-        <div class="card"><div class="kpi-label">Planned monthly payments</div><div id="ccPlanned" class="kpi-value">$0</div></div>
+        <div class="card"><div class="kpi-label">Interest per month</div><div id="ccInterest" class="kpi-value">$0</div><div class="kpi-foot">6-month average</div></div>
       </div>
-      <div class="card" style="overflow:auto"><table><thead><tr><th>Card</th><th class="money">Balance</th><th class="money">Limit</th><th class="money">Utilization</th><th class="money">Minimum</th><th class="money">Planned payment</th><th>Due day</th><th></th></tr></thead><tbody id="cardsBody"></tbody></table></div>
-      <div class="note" style="margin-top:14px">Use the pay-cycle Bills area for the actual payment you intend to make this cycle. This page is the debt-management layer: balance, utilization, minimum, and target payment.</div>
+      <div class="alertrow" style="margin-bottom:14px"><div id="ccNet"></div></div>
+      <div class="card" style="overflow:auto"><table><thead><tr><th>Card</th><th class="money">Owed</th><th class="money">30-day</th><th class="money">Limit</th><th class="money">Available</th><th class="money">Util</th><th class="money">Interest/mo</th><th class="money">Paid/mo</th><th></th></tr></thead><tbody id="cardsBody"></tbody></table></div>
+      <div class="note" style="margin-top:14px">Balances and 30-day movement come from your Balances CSV history. Interest and payments are 6-month averages from your transactions. Utilization and available credit need a credit limit — tap Edit to set one. “Txns” filters the Transactions tab to that card.</div>
+    </section>
+
+
+    <section id="invest" class="section">
+      <div class="topbar"><div><h1>Investments</h1><div class="sub">Balances and movement, built from every Balances CSV you've imported.</div></div>
+      <div class="actions"><button class="btn primary" onclick="openBalanceImport()">Import balances</button></div></div>
+      <div class="grid kpis" style="grid-template-columns:repeat(4,minmax(150px,1fr))">
+        <div class="card"><div class="kpi-label">Total invested</div><div id="iTotal" class="kpi-value">$0</div></div>
+        <div class="card"><div class="kpi-label">Change, 30 days</div><div id="i30" class="kpi-value">—</div></div>
+        <div class="card"><div class="kpi-label">Change, year to date</div><div id="iYtd" class="kpi-value">—</div></div>
+        <div class="card"><div class="kpi-label">Last import</div><div id="iAsOf" class="kpi-value" style="font-size:18px">never</div><div class="kpi-foot">Data through <span id="iDataThru">—</span></div></div>
+      </div>
+      <div class="card" style="overflow:auto"><table><thead><tr><th>Account</th><th class="money">Balance</th><th class="money">Last change</th><th class="money">30 days</th><th class="money">90 days</th><th class="money">YTD</th><th>As of</th></tr></thead><tbody id="investBody"></tbody></table></div>
+      <div class="note" style="margin-top:14px">History accumulates with each import — the more often you import, the finer the movement. Nothing here affects cash on hand or the funding plan.</div>
     </section>
 
     <section id="settings" class="section">
@@ -235,7 +253,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 </div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveBill()">Save bill</button></div></div></div>
 
 <div id="accountModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="accountModalTitle">Add account</h2><button class="btn small" onclick="closeModal('accountModal')">Close</button></div>
-<input id="acctEditId" type="hidden"><div class="formgrid"><div><label>Institution</label><input id="acctInstitution" class="input"></div><div><label>Account name</label><input id="acctName" class="input"></div><div><label>Type</label><select id="acctType" class="input"><option>Checking</option><option>Savings</option></select></div><div><label>Balance</label><input id="acctBalance" class="input moneyin" type="number" step=".01"></div><div><label>Include in cash on hand</label><select id="acctInclude" class="input"><option value="true">Yes</option><option value="false">No</option></select></div><div style="grid-column:1/-1"><label>Statement name in transactions</label><input id="acctMatch" class="input" list="txnAcctList" placeholder="e.g. Adv Plus Banking (...9297)"><datalist id="txnAcctList"></datalist></div><div><label>Expected deposit per paycheck</label><input id="acctDeposit" class="input moneyin" type="number" step=".01"></div></div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveAccount()">Save account</button></div></div></div>
+<input id="acctEditId" type="hidden"><div class="formgrid"><div><label>Institution</label><input id="acctInstitution" class="input"></div><div><label>Account name</label><input id="acctName" class="input"></div><div><label>Type</label><select id="acctType" class="input"><option>Checking</option><option>Savings</option><option>Investment</option><option>Credit</option></select></div><div><label>Balance</label><input id="acctBalance" class="input moneyin" type="number" step=".01"></div><div><label>Include in cash on hand</label><select id="acctInclude" class="input"><option value="true">Yes</option><option value="false">No</option></select></div><div style="grid-column:1/-1"><label>Statement names (comma separated)</label><input id="acctMatch" class="input" list="txnAcctList" placeholder="e.g. Adv Plus Banking (...9297)"><datalist id="txnAcctList"></datalist></div><div><label>Expected deposit per paycheck</label><input id="acctDeposit" class="input moneyin" type="number" step=".01"></div></div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveAccount()">Save account</button></div></div></div>
 
 <div id="cycleModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Add pay cycle</h2><button class="btn small" onclick="closeModal('cycleModal')">Close</button></div><div class="formgrid"><div><label>Pay date</label><input id="cycleDate" type="date" class="input"></div><div><label>Paycheck</label><input id="cyclePaycheck" type="number" step=".01" class="input moneyin"></div></div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveCycle()">Add cycle</button></div></div></div>
 
@@ -246,7 +264,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 
 <div id="cardModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="cardModalTitle">Add credit card</h2><button class="btn small" onclick="closeModal('cardModal')">Close</button></div>
 <input id="cardEditId" type="hidden"><div class="formgrid">
-<div><label>Card name</label><input id="cardName" class="input"></div><div><label>Balance</label><input id="cardBalance" class="input moneyin" type="number" step=".01"></div><div><label>Credit limit</label><input id="cardLimit" class="input moneyin" type="number" step=".01"></div><div><label>Minimum payment</label><input id="cardMin" class="input moneyin" type="number" step=".01"></div><div><label>Planned payment</label><input id="cardPlan" class="input moneyin" type="number" step=".01"></div><div><label>Due day</label><input id="cardDue" class="input" type="number" min="1" max="31"></div>
+<div><label>Card name</label><input id="cardName" class="input"></div><div><label>Statement name</label><input id="cardMatch" class="input" list="txnAcctList" placeholder="matches your CSV name"></div><div><label>Balance</label><input id="cardBalance" class="input moneyin" type="number" step=".01"></div><div><label>Credit limit</label><input id="cardLimit" class="input moneyin" type="number" step=".01"></div><div><label>Minimum payment</label><input id="cardMin" class="input moneyin" type="number" step=".01"></div><div><label>Planned payment</label><input id="cardPlan" class="input moneyin" type="number" step=".01"></div><div><label>Due day</label><input id="cardDue" class="input" type="number" min="1" max="31"></div>
 </div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveCard()">Save card</button></div></div></div>
 
 
@@ -263,6 +281,11 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
     <button class="btn" onclick="clearManualMatch()">Clear match</button>
   </div>
 </div></div>
+
+<div id="balMapModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Link these to your accounts</h2><button class="btn small" onclick="closeModal('balMapModal')">Close</button></div>
+<div class="note" style="margin-bottom:12px">These names from the CSV don't match anything yet. Point each one at an account you already have — that prevents duplicates, and the link is remembered for next time.</div>
+<div style="overflow:auto"><table><thead><tr><th>From the CSV</th><th>Link to</th></tr></thead><tbody id="balMapBody"></tbody></table></div>
+<div class="actions" style="margin-top:16px"><button class="btn primary" onclick="applyBalanceMap()">Save links</button><button class="btn" onclick="closeModal('balMapModal')">Cancel</button></div></div></div>
 
 <div id="balImportModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Import balances</h2><button class="btn small" onclick="closeModal('balImportModal')">Close</button></div>
 <div class="drop"><strong>Choose a Monarch Balances CSV</strong><div class="sub">The most recent row for each account is used.</div><label class="btn primary" for="balFile" style="display:inline-block;margin-top:13px">Choose CSV</label><input id="balFile" class="fileinput" type="file" accept=".csv,text/csv" onchange="importBalances(event)"></div>
@@ -568,6 +591,9 @@ function migrate(){
   if(!s.ccPolicy)s.ccPolicy='minimum';
   if(s.hubAccount===undefined)s.hubAccount='';
   if(!Array.isArray(state.subOverrides))state.subOverrides=[];
+  if(!state.balHist)state.balHist={};
+  if(state.lastBalanceImport===undefined)state.lastBalanceImport='';
+  (state.cards||[]).forEach(c=>{if(c.match===undefined)c.match=''});
   state.accounts.forEach(a=>{if(a.match===undefined)a.match='';if(a.deposit===undefined)a.deposit=0});
   state.bills.forEach(b=>{if(b.accountId===undefined)b.accountId=''});
   save();
@@ -578,14 +604,19 @@ const norm=s=>String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
 function acctLabel(a){return a?`${a.institution} ${a.name}`.trim():'Unassigned'}
 function acctById(id){return state.accounts.find(a=>a.id===id)}
 function txnAccountNames(){return [...new Set(state.transactions.map(t=>t.account).filter(Boolean))].sort()}
+function matchList(a){return String(a.match||'').split(',').map(norm).filter(Boolean)}
 function acctForTxnName(name){
   const n=norm(name);if(!n)return null;
-  return state.accounts.find(a=>{
-    const m=norm(a.match);
-    if(m&&(n===m||n.includes(m)||m.includes(n)))return true;
-    const lbl=norm(acctLabel(a));
-    return lbl&&(n===lbl||n.includes(lbl));
-  })||null;
+  let hit=state.accounts.find(a=>matchList(a).some(m=>n===m));
+  if(hit)return hit;
+  hit=state.accounts.find(a=>matchList(a).some(m=>n.includes(m)||m.includes(n)));
+  if(hit)return hit;
+  return state.accounts.find(a=>{const lbl=norm(acctLabel(a));return lbl&&(n===lbl||n.includes(lbl))})||null;
+}
+function addMatch(a,name){
+  const cur=String(a.match||'').split(',').map(x=>x.trim()).filter(Boolean);
+  if(!cur.some(x=>norm(x)===norm(name)))cur.push(name);
+  a.match=cur.join(', ');
 }
 const CARD_WORDS=/\b(card|credit|visa|mastercard|amex|american express|platinum|discover|quicksilver|skymiles|blue cash|preferred|rewards|signature|gold)\b/i;
 function isCashName(n){return /checking|savings|cash|money market/i.test(n)&&!CARD_WORDS.test(n)}
@@ -903,6 +934,8 @@ renderAll=function(){
   _renderAll();
   try{renderFunding()}catch(e){console.warn('funding',e)}
   try{renderSubs()}catch(e){console.warn('subs',e)}
+  try{renderInvest()}catch(e){console.warn('invest',e)}
+  try{renderCards2()}catch(e){console.warn('cards2',e)}
   try{fillHubSelect();if($('setBuffer')){$('setBuffer').value=Number(state.settings.buffer||0);$('setCcPolicy').value=state.settings.ccPolicy||'minimum'}}catch(e){}
   try{renderAlertBanner()}catch(e){}
 };
@@ -942,6 +975,8 @@ function importBalances(ev){
       if(!latest[acct]||ds>latest[acct].date)latest[acct]={date:ds,balance:bal};
     }
     if(!parsed)return alert('No usable rows. Expected columns: Date, Balance, Account.');
+    recordHistory(rows,heads);
+    state.lastBalanceImport=today();
     const matched=[],unmatched=[],cardHits=[],stale=[];
     const cutoff=daysAgo(45);
     Object.entries(latest).forEach(([name,info])=>{
@@ -959,19 +994,291 @@ function importBalances(ev){
       if(!hit)unmatched.push({name,...info});
       else if(info.date<cutoff)stale.push({name,...info});
     });
+    state._pendingBalances=unmatched;
     save();renderAll();closeModal('balImportModal');ev.target.value='';
     $('balImportResult')&&($('balImportResult').innerHTML='');
     let msg=`Updated ${matched.length} account balance${matched.length===1?'':'s'}`;
     if(cardHits.length)msg+=` and ${cardHits.length} card balance${cardHits.length===1?'':'s'}`;
     msg+='.';
     if(matched.length)msg+='\n\n'+matched.map(m=>`${m.label}: ${money(m.balance)} (as of ${m.date})`).join('\n');
-    if(cardHits.length)msg+='\n\nCards:\n'+cardHits.map(m=>`${m.label}: ${money(m.balance)} owed`).join('\n');
+    if(cardHits.length)msg+='\n\nCards:\n'+cardHits.map(m=>`${m.label}: ${money(Math.abs(m.balance))} owed`).join('\n');
     if(stale.length)msg+=`\n\nStale (no balance in the last 45 days) — verify these:\n${stale.map(s=>`${s.name}: last seen ${s.date}`).join('\n')}`;
-    if(unmatched.length)msg+=`\n\nNot matched to any account or card:\n${unmatched.map(u=>`${u.name}: ${money(u.balance)}`).join('\n')}\n\nSet each account's "statement name" on the Accounts tab to match, then re-import.`;
     alert(msg);
+    if(unmatched.length)openBalanceMap();
   };
   rd.readAsText(f);
 }
+
+/* ---------- link unmatched balance rows to existing accounts ---------- */
+function openBalanceMap(){
+  const pend=state._pendingBalances||[];
+  if(!pend.length)return;
+  $('balMapBody').innerHTML=pend.map((u,i)=>{
+    const opts=state.accounts.map(a=>`<option value="acct:${a.id}">${esc(acctLabel(a))}</option>`).join('');
+    const cardOpts=(state.cards||[]).map(c=>`<option value="card:${c.id}">Card: ${esc(c.name)}</option>`).join('');
+    const guess=guessAccount(u.name);
+    return `<tr>
+      <td><strong>${esc(u.name)}</strong><div class="muted" style="font-size:11px">${money(u.balance)} • as of ${u.date}</div></td>
+      <td><select class="input" data-map="${i}">
+        <option value="" selected>— skip for now —</option>
+        <option value="new">+ Create new account</option>
+        <option value="newcard">+ Create new credit card</option>
+        ${opts}${cardOpts}
+      </select></td></tr>`;
+  }).join('');
+  // preselect best guess
+  setTimeout(()=>{
+    pend.forEach((u,i)=>{
+      const g=guessAccount(u.name);
+      const sel=document.querySelector(`[data-map="${i}"]`);
+      if(sel&&g)sel.value='acct:'+g.id;
+    });
+  },0);
+  openModal('balMapModal');
+}
+function guessAccount(name){
+  const n=norm(name);
+  const digits=(name.match(/\d{3,}/g)||[]).slice(-1)[0];
+  let best=null,score=0;
+  for(const a of state.accounts){
+    const lbl=norm(acctLabel(a));let s=0;
+    if(digits&&(a.name+a.match+a.institution).includes(digits))s+=5;
+    const words=lbl.split(' ').filter(w=>w.length>3);
+    s+=words.filter(w=>n.includes(w)).length;
+    if(s>score){score=s;best=a}
+  }
+  return score>=2?best:null;
+}
+function applyBalanceMap(){
+  const pend=state._pendingBalances||[];
+  let linked=0,created=0;
+  document.querySelectorAll('[data-map]').forEach(sel=>{
+    const u=pend[Number(sel.dataset.map)];if(!u||!sel.value)return;
+    const v=sel.value;
+    if(v==='new'){
+      const cash=isCashName(u.name);
+      const a={id:uid(),institution:u.name.replace(/\s*\(.*\)$/,'').trim(),name:u.name.match(/\((.*)\)/)?.[1]||u.name,
+        type:cash?'Checking':'Savings',balance:u.balance,include:cash,match:u.name,deposit:0};
+      state.accounts.push(a);created++;return;
+    }
+    if(v==='newcard'){
+      state.cards=state.cards||[];
+      state.cards.push({id:uid(),name:u.name,balance:Math.abs(u.balance),limit:0,minimum:0,planned:0,due:''});
+      created++;return;
+    }
+    const [kind,id]=v.split(':');
+    if(kind==='acct'){const a=acctById(id);if(a){addMatch(a,u.name);a.balance=u.balance;linked++}}
+    if(kind==='card'){const c=(state.cards||[]).find(x=>x.id===id);if(c){c.balance=Math.abs(u.balance);linked++}}
+  });
+  state._pendingBalances=[];save();closeModal('balMapModal');renderAll();
+  alert(`Linked ${linked} account${linked===1?'':'s'}${created?`, created ${created}`:''}.\n\nThese links are saved — future balance imports will match automatically.`);
+}
+
+/* ---------- balance history ---------- */
+function recordHistory(rows,heads){
+  state.balHist=state.balHist||{};
+  const cutoff=daysAgo(760);
+  const seen={};
+  for(const r of rows.slice(1)){
+    const o={};heads.forEach((k,i)=>o[k]=r[i]||'');
+    const acct=pick(o,['Account','Account Name']),dr=pick(o,['Date','As Of','Balance Date']);
+    if(!acct||!dr)continue;
+    const d=new Date(dr);if(isNaN(d))continue;
+    const ds=d.toISOString().slice(0,10);
+    if(ds<cutoff)continue;
+    const bal=parseAmount(pick(o,['Balance','Amount','Current Balance']));
+    (seen[acct]=seen[acct]||{})[ds]=bal;
+  }
+  Object.entries(seen).forEach(([acct,byDate])=>{
+    const prev=state.balHist[acct]||[];
+    const merged={};
+    prev.forEach(([d,v])=>{if(d>=cutoff)merged[d]=v});
+    Object.entries(byDate).forEach(([d,v])=>merged[d]=v);
+    state.balHist[acct]=Object.entries(merged).sort((a,b)=>a[0].localeCompare(b[0])).map(([d,v])=>[d,v]);
+  });
+  save();
+}
+function histFor(name){
+  const H=state.balHist||{};
+  if(H[name])return H[name];
+  const n=norm(name);
+  const k=Object.keys(H).find(k=>norm(k)===n)||Object.keys(H).find(k=>norm(k).includes(n)||n.includes(norm(k)));
+  return k?H[k]:[];
+}
+function histForAccount(a){
+  for(const m of String(a.match||'').split(',').map(x=>x.trim()).filter(Boolean)){
+    const h=histFor(m);if(h.length)return h;
+  }
+  return histFor(acctLabel(a));
+}
+function balAsOf(h,dateStr){
+  let out=null;
+  for(const [d,v] of h){if(d<=dateStr)out=v;else break}
+  return out;
+}
+function changeStats(h){
+  if(!h.length)return null;
+  const cur=h.at(-1)[1],lastDate=h.at(-1)[0];
+  const prev=h.length>1?h.at(-2)[1]:null;
+  const d30=balAsOf(h,daysAgo(30)),d90=balAsOf(h,daysAgo(90));
+  const ytd=balAsOf(h,new Date().getFullYear()+'-01-01');
+  return {cur,lastDate,prev,
+    dPrev:prev===null?null:cur-prev,
+    d30:d30===null?null:cur-d30,
+    d90:d90===null?null:cur-d90,
+    dYtd:ytd===null?null:cur-ytd};
+}
+function delta(v,invert){
+  if(v===null||v===undefined)return '<span class="muted">—</span>';
+  const good=invert?v<0:v>0;
+  const cls=Math.abs(v)<0.005?'muted':(good?'good':'bad');
+  const sign=v>0?'+':'';
+  return `<span class="${cls}">${sign}${money(v).replace('$','$')}</span>`;
+}
+const INVEST_RE=/retirement|401|403b|ira|invest|brokerage|acorns|equity|portfolio|individual|savings plan|hsa|529/i;
+function investRows(){
+  const named=state.accounts.filter(a=>a.type==='Investment');
+  const rows=named.map(a=>({name:acctLabel(a),h:histForAccount(a),acct:a}));
+  const covered=new Set();
+  state.accounts.forEach(a=>{
+    covered.add(norm(acctLabel(a)));
+    String(a.match||'').split(',').forEach(m=>{if(m.trim())covered.add(norm(m))});
+  });
+  (state.cards||[]).forEach(c=>{covered.add(norm(c.name));if(c.match)covered.add(norm(c.match))});
+  Object.keys(state.balHist||{}).forEach(k=>{
+    if(!INVEST_RE.test(k))return;
+    if(covered.has(norm(k)))return;
+    rows.push({name:k,h:state.balHist[k],acct:null});
+  });
+  const out=rows.filter(r=>r.h&&r.h.length).map(r=>({...r,s:changeStats(r.h)}))
+    .sort((a,b)=>b.s.cur-a.s.cur);
+  // Monarch exports both a plan wrapper and its underlying account with the same
+  // balance; keep one and flag the other so totals aren't doubled.
+  for(let i=0;i<out.length;i++){
+    if(out[i].dupOf)continue;
+    for(let j=i+1;j<out.length;j++){
+      if(out[j].dupOf)continue;
+      if(Math.abs(out[i].s.cur-out[j].s.cur)<1&&Math.abs(out[i].s.cur)>1)out[j].dupOf=out[i].name;
+    }
+  }
+  return out;
+}
+function renderInvest(){
+  if(!$('investBody'))return;
+  const rows=investRows();
+  const total=rows.filter(r=>!r.dupOf).reduce((s,r)=>s+r.s.cur,0);
+  const d30=rows.filter(r=>!r.dupOf).reduce((s,r)=>s+(r.s.d30||0),0);
+  const dYtd=rows.filter(r=>!r.dupOf).reduce((s,r)=>s+(r.s.dYtd||0),0);
+  $('iTotal').textContent=money(total);
+  $('i30').innerHTML=delta(d30);
+  $('iYtd').innerHTML=delta(dYtd);
+  $('iAsOf').textContent=state.lastBalanceImport?fmtDate(state.lastBalanceImport):'never';
+  const newest=rows.map(r=>r.s.lastDate).sort().at(-1);
+  $('iDataThru').textContent=newest?fmtDate(newest):'—';
+  $('investBody').innerHTML=rows.length?rows.map(r=>`<tr>
+    <td><strong>${esc(r.name)}</strong>${r.dupOf?`<div class="muted" style="font-size:11px">mirrors ${esc(r.dupOf)} — not counted in the total</div>`:(r.acct?'':'<div class="muted" style="font-size:11px">from balance history</div>')}</td>
+    <td class="money">${money(r.s.cur)}</td>
+    <td class="money">${delta(r.s.dPrev)}</td>
+    <td class="money">${delta(r.s.d30)}</td>
+    <td class="money">${delta(r.s.d90)}</td>
+    <td class="money">${delta(r.s.dYtd)}</td>
+    <td>${fmtDate(r.s.lastDate).replace(/, \d{4}/,'')}</td></tr>`).join('')
+    :'<tr><td colspan="7" class="empty">Import a Balances CSV to see investment history.</td></tr>';
+}
+
+/* ---------- credit cards ---------- */
+function cardTxnStats(name){
+  const since=daysAgo(180),n=norm(name);
+  const rows=state.transactions.filter(t=>{const a=norm(t.account);return t.date>=since&&(a===n||a.includes(n)||n.includes(a))});
+  const months=Math.max(1,new Set(rows.map(t=>t.date.slice(0,7))).size);
+  const interest=rows.filter(t=>/interest/i.test(t.category)&&Number(t.amount)<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const pay=rows.filter(t=>Number(t.amount)>0&&/payment/i.test(t.category)).reduce((s,t)=>s+Number(t.amount),0);
+  return {interestMo:interest/months,payMo:pay/months,months,n:rows.length};
+}
+const CARD_RE=/card|credit|visa|mastercard|amex|platinum|discover|quicksilver|skymiles|blue cash|preferred|rewards|signature/i;
+function cardRows(){
+  const out=[];
+  (state.cards||[]).forEach(c=>{
+    const src=c.match||c.name;
+    const h=histFor(src),s=h.length?changeStats(h):null;
+    const bal=s?Math.abs(s.cur):Number(c.balance||0);
+    out.push({card:c,name:c.name,src,h,s,bal,limit:Number(c.limit||0),min:Number(c.minimum||0),due:c.due,
+      t:cardTxnStats(src),known:true});
+  });
+  Object.keys(state.balHist||{}).forEach(k=>{
+    if(!CARD_RE.test(k))return;
+    if(out.some(r=>norm(r.src)===norm(k)||norm(r.name)===norm(k)))return;
+    const h=state.balHist[k],s=changeStats(h);
+    if(!s||s.cur>0)return;
+    out.push({card:null,name:k,src:k,h,s,bal:Math.abs(s.cur),limit:0,min:0,due:'',t:cardTxnStats(k),known:false});
+  });
+  out.forEach(r=>{
+    const spans30=r.h&&r.h.length&&r.h[0][0]<=daysAgo(30);
+    r.stale=!!(spans30&&r.s&&r.s.d30===0&&r.t.n>0);
+  });
+  return out.sort((a,b)=>b.bal-a.bal);
+}
+function renderCards2(){
+  if(!$('cardsBody'))return;
+  const rows=cardRows();
+  const bal=rows.reduce((s,r)=>s+r.bal,0),lim=rows.reduce((s,r)=>s+r.limit,0);
+  const avail=Math.max(0,lim-rows.filter(r=>r.limit>0).reduce((s,r)=>s+r.bal,0));
+  const int=rows.reduce((s,r)=>s+r.t.interestMo,0),pay=rows.reduce((s,r)=>s+r.t.payMo,0);
+  const d30=rows.reduce((s,r)=>s+(r.s&&r.s.d30!==null?-r.s.d30:0),0);
+  $('ccBalance').textContent=money(bal);
+  $('ccLimit').textContent=lim?money(lim):'—';
+  const util=lim?rows.filter(r=>r.limit>0).reduce((s,r)=>s+r.bal,0)/lim*100:0;
+  $('ccUtil').textContent=lim?util.toFixed(1)+'%':'—';
+  $('ccUtil').className='kpi-value '+(util>=80?'bad':util>=50?'warn':'good');
+  $('ccPlanned').textContent=money(pay);
+  if($('ccAvail'))$('ccAvail').textContent=lim?money(avail):'—';
+  if($('ccInterest')){$('ccInterest').textContent=money(int);$('ccInterest').className='kpi-value '+(int>0?'bad':'')}
+  if($('ccChange'))$('ccChange').innerHTML=delta(d30,false);
+  if($('ccNet'))
+    {const st=rows.filter(r=>r.stale).length;
+    $('ccNet').innerHTML=`Paying about ${money(pay)}/mo against ${money(int)}/mo in interest — roughly ${money(pay-int)} of that reduces principal.`
+      +(st?`<div class="muted" style="font-size:12px;margin-top:4px">${st} card${st===1?'':'s'} reporting a flat balance for 30 days — those figures may be out of date.</div>`:'');}
+  $('cardsBody').innerHTML=rows.length?rows.map(r=>{
+    const u=r.limit?r.bal/r.limit*100:null;
+    const av=r.limit?r.limit-r.bal:null;
+    return `<tr>
+      <td><strong>${esc(r.name)}</strong>${r.stale?'<div class="warn" style="font-size:11px">balance unchanged 30 days — check the Monarch connection</div>':''}${r.known?'':'<div class="muted" style="font-size:11px">detected — add limit</div>'}</td>
+      <td class="money">${money(r.bal)}</td>
+      <td class="money">${r.s?delta(r.s.d30===null?null:-r.s.d30):'<span class="muted">—</span>'}</td>
+      <td class="money">${r.limit?money(r.limit):'<span class="muted">—</span>'}</td>
+      <td class="money">${av===null?'<span class="muted">—</span>':money(av)}</td>
+      <td class="money ${u===null?'':(u>=80?'bad':u>=50?'warn':'good')}">${u===null?'—':u.toFixed(1)+'%'}</td>
+      <td class="money ${r.t.interestMo>0?'bad':''}">${money(r.t.interestMo)}</td>
+      <td class="money">${money(r.t.payMo)}</td>
+      <td class="right"><button class="btn small" onclick="openAcctTxns('${esc(r.src).replace(/'/g,"\\'")}')">Txns</button>
+      ${r.known?`<button class="btn small" onclick="editCard('${r.card.id}')">Edit</button>`:`<button class="btn small" onclick="adoptCard('${esc(r.name).replace(/'/g,"\\'")}')">Add</button>`}</td></tr>`;
+  }).join(''):'<tr><td colspan="9" class="empty">No cards yet. Import a Balances CSV or add one manually.</td></tr>';
+}
+function adoptCard(name){
+  const h=histFor(name),s=h.length?changeStats(h):null;
+  state.cards=state.cards||[];
+  state.cards.push({id:uid(),name,match:name,balance:s?Math.abs(s.cur):0,limit:0,minimum:0,planned:0,due:''});
+  save();renderAll();
+  alert(`Added "${name}". Open Edit to set its credit limit and minimum payment — available credit and utilization need the limit.`);
+}
+function openAcctTxns(name){
+  showTab('transactions');
+  const s=$('txnAccountFilter');
+  if(s){
+    if(![...s.options].some(o=>o.value===name)){
+      const alt=[...s.options].find(o=>norm(o.value).includes(norm(name))||norm(name).includes(norm(o.value)));
+      s.value=alt?alt.value:'';
+    } else s.value=name;
+    renderTransactions();
+  }
+}
+
+const _openCardModal=openCardModal,_editCard=editCard,_saveCard=saveCard;
+openCardModal=function(){_openCardModal();if($('cardMatch')){$('cardMatch').value='';fillAcctMatchList()}};
+editCard=function(id){_editCard(id);const c=(state.cards||[]).find(x=>x.id===id);if($('cardMatch')&&c){$('cardMatch').value=c.match||'';fillAcctMatchList()}};
+saveCard=function(){const editing=$('cardEditId').value,m=$('cardMatch')?$('cardMatch').value.trim():'';_saveCard();
+  const c=editing?(state.cards||[]).find(x=>x.id===editing):(state.cards||[]).at(-1);
+  if(c){c.match=m;save();renderAll()}};
 
 migrate();
 renderAll();
