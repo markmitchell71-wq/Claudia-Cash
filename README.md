@@ -26,6 +26,14 @@ fields are added on first load, nothing is overwritten.
   Apple/PayPal charges that can't be itemized from bank data.
 - Hide false positives, or promote any subscription to a tracked bill.
 
+**Balance import**
+- "Import balances" reads a Monarch Balances CSV and uses the most recent row
+  for each account.
+- Cash accounts get their balance set; anything matching a credit card name
+  updates the Credit Cards tab instead, stored as a positive amount owed.
+- Warns about accounts whose newest balance is over 45 days old, and lists any
+  account it couldn't match so you can fix the statement name.
+
 **Other**
 - Import now stores the Original Statement field (needed for PayPal resolution).
 - Accounts have a "statement name" so app accounts match Monarch account names,
@@ -50,7 +58,8 @@ fields are added on first load, nothing is overwritten.
 5. **Funding & Transfers → Auto-link bills**, then **Fix unlinked** for the rest.
 6. **Settings → Funding rules.** Cushion is set to $0; pick your hub account
    (the one transfers should come from by default).
-7. **Update balances** from the dashboard whenever you want current numbers.
+7. **Import balances** from the dashboard using your Balances CSV export, or
+   type them in manually with "Update balances".
 
 ## Publishing
 

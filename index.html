@@ -97,7 +97,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
     <section id="dashboard" class="section active">
       <div class="topbar">
         <div><h1>Budget Dashboard</h1><div class="sub">Your main question: what can I safely spend until next payday?</div></div>
-        <div class="actions"><button class="btn" onclick="openTxnImport()">Import Monarch CSV</button><button class="btn primary" onclick="openBalanceModal()">Update balances</button></div>
+        <div class="actions"><button class="btn" onclick="openTxnImport()">Import Monarch CSV</button><button class="btn" onclick="openBalanceImport()">Import balances</button><button class="btn primary" onclick="openBalanceModal()">Update balances</button></div>
       </div>
       <div id="transferBanner" style="display:none;margin-bottom:14px"></div>
       <div id="cycleChips" class="cyclechips"></div>
@@ -144,7 +144,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
     </section>
 
     <section id="accounts" class="section">
-      <div class="topbar"><div><h1>Bank Accounts</h1><div class="sub">Only accounts marked “Include in cash on hand” affect the dashboard total.</div></div><div class="actions"><button class="btn" onclick="importAccountsFromTxns()">Add from transactions</button><button class="btn primary" onclick="openAccountModal()">Add account</button></div></div>
+      <div class="topbar"><div><h1>Bank Accounts</h1><div class="sub">Only accounts marked “Include in cash on hand” affect the dashboard total.</div></div><div class="actions"><button class="btn" onclick="importAccountsFromTxns()">Add from transactions</button><button class="btn" onclick="openBalanceImport()">Import balances</button><button class="btn primary" onclick="openAccountModal()">Add account</button></div></div>
       <div class="grid three" id="accountsGrid"></div>
     </section>
 
@@ -225,7 +225,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
   </main>
 </div>
 
-<div id="balanceModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Update account balances</h2><button class="btn small" onclick="closeModal('balanceModal')">Close</button></div><div id="balanceFields" class="formgrid"></div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveBalances()">Save balances</button></div></div></div>
+<div id="balanceModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Update account balances</h2><button class="btn small" onclick="closeModal('balanceModal')">Close</button></div><div class="note" style="margin-bottom:12px">Type them in below, or <button class="btn small" onclick="closeModal('balanceModal');openBalanceImport()">import a Balances CSV</button> to fill them automatically.</div><div id="balanceFields" class="formgrid"></div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveBalances()">Save balances</button></div></div></div>
 
 <div id="billModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="billModalTitle">Add bill</h2><button class="btn small" onclick="closeModal('billModal')">Close</button></div>
 <input id="billEditId" type="hidden"><div class="formgrid">
@@ -263,6 +263,11 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
     <button class="btn" onclick="clearManualMatch()">Clear match</button>
   </div>
 </div></div>
+
+<div id="balImportModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Import balances</h2><button class="btn small" onclick="closeModal('balImportModal')">Close</button></div>
+<div class="drop"><strong>Choose a Monarch Balances CSV</strong><div class="sub">The most recent row for each account is used.</div><label class="btn primary" for="balFile" style="display:inline-block;margin-top:13px">Choose CSV</label><input id="balFile" class="fileinput" type="file" accept=".csv,text/csv" onchange="importBalances(event)"></div>
+<div id="balImportResult"></div>
+<div class="note" style="margin-top:13px">Expected columns: Date, Balance, Account. Accounts are matched by their “statement name”, and anything that doesn’t match a cash account is checked against your credit card names. Card balances are stored as positive amounts owed.</div></div></div>
 
 <div id="txnImportModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Import Monarch transactions</h2><button class="btn small" onclick="closeModal('txnImportModal')">Close</button></div>
 <div class="drop"><strong>Choose a Monarch CSV export</strong><div class="sub">Monthly or full-history CSV is fine. Existing duplicate rows are ignored.</div><label class="btn primary" for="txnFile" style="display:inline-block;margin-top:13px">Choose CSV</label><input id="txnFile" class="fileinput" type="file" accept=".csv,text/csv" onchange="importTransactions(event)"></div>
@@ -911,6 +916,61 @@ function renderAlertBanner(){
     <div><strong>${m.unfunded?`Short ${money(m.amount)} for ${esc(acctLabel(m.to))}`:`Transfer ${money(m.amount)} → ${esc(acctLabel(m.to))} by ${fmtDate(m.by)}`}</strong>
     <div class="muted" style="font-size:12px">${m.unfunded?'No account has the surplus to cover it.':`From ${esc(acctLabel(m.from))} • covers ${esc(m.covers)}`}${more>0?` • ${more} more move${more===1?'':'s'} this cycle`:''}</div></div>
     <button class="btn small" onclick="showTab('funding')">Open plan</button></div>`;
+}
+
+/* ---------- balances CSV import ---------- */
+function openBalanceImport(){$('balFile').value='';openModal('balImportModal')}
+function importBalances(ev){
+  const f=ev.target.files[0];if(!f)return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    let rows;
+    try{rows=csvParse(rd.result)}catch(e){return alert('Could not read that file.')}
+    if(!rows||rows.length<2)return alert('No rows found in that CSV.');
+    const heads=rows[0];
+    const latest={};
+    let parsed=0;
+    for(const r of rows.slice(1)){
+      const o={};heads.forEach((k,i)=>o[k]=r[i]||'');
+      const acct=pick(o,['Account','Account Name']);
+      const dateRaw=pick(o,['Date','As Of','Balance Date']);
+      if(!acct||!dateRaw)continue;
+      const d=new Date(dateRaw);if(isNaN(d))continue;
+      const ds=d.toISOString().slice(0,10);
+      const bal=parseAmount(pick(o,['Balance','Amount','Current Balance']));
+      parsed++;
+      if(!latest[acct]||ds>latest[acct].date)latest[acct]={date:ds,balance:bal};
+    }
+    if(!parsed)return alert('No usable rows. Expected columns: Date, Balance, Account.');
+    const matched=[],unmatched=[],cardHits=[],stale=[];
+    const cutoff=daysAgo(45);
+    Object.entries(latest).forEach(([name,info])=>{
+      const a=acctForTxnName(name);
+      const c=(state.cards||[]).find(c=>{
+        const cn=norm(c.name),nn=norm(name);
+        return cn&&(nn===cn||nn.includes(cn)||cn.includes(nn));
+      });
+      let hit=false;
+      if(a&&isCashAcct(a)){a.balance=info.balance;matched.push({name,...info,label:acctLabel(a)});hit=true}
+      else{
+        if(c){c.balance=Math.abs(info.balance);cardHits.push({name,...info,label:c.name});hit=true}
+        if(a){a.balance=info.balance;if(!c){matched.push({name,...info,label:acctLabel(a)+' (not cash)'});hit=true}}
+      }
+      if(!hit)unmatched.push({name,...info});
+      else if(info.date<cutoff)stale.push({name,...info});
+    });
+    save();renderAll();closeModal('balImportModal');ev.target.value='';
+    $('balImportResult')&&($('balImportResult').innerHTML='');
+    let msg=`Updated ${matched.length} account balance${matched.length===1?'':'s'}`;
+    if(cardHits.length)msg+=` and ${cardHits.length} card balance${cardHits.length===1?'':'s'}`;
+    msg+='.';
+    if(matched.length)msg+='\n\n'+matched.map(m=>`${m.label}: ${money(m.balance)} (as of ${m.date})`).join('\n');
+    if(cardHits.length)msg+='\n\nCards:\n'+cardHits.map(m=>`${m.label}: ${money(m.balance)} owed`).join('\n');
+    if(stale.length)msg+=`\n\nStale (no balance in the last 45 days) — verify these:\n${stale.map(s=>`${s.name}: last seen ${s.date}`).join('\n')}`;
+    if(unmatched.length)msg+=`\n\nNot matched to any account or card:\n${unmatched.map(u=>`${u.name}: ${money(u.balance)}`).join('\n')}\n\nSet each account's "statement name" on the Accounts tab to match, then re-import.`;
+    alert(msg);
+  };
+  rd.readAsText(f);
 }
 
 migrate();
