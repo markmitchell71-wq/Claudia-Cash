@@ -2,25 +2,38 @@
 <html lang="en">
 <head>
 <meta charset="utf-8" />
-<meta name="theme-color" content="#0b1220" />
+<meta name="theme-color" content="#141019" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-<meta name="apple-mobile-web-app-title" content="Cash Tracker" />
+<meta name="apple-mobile-web-app-title" content="Claudia Cash" />
 <link rel="manifest" href="manifest.webmanifest" />
 <link rel="apple-touch-icon" href="icon-180.png" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Cash Tracker</title>
+<title>Claudia Cash</title>
 <style>
+/* ============================================================
+   CLAUDIA CASH — THEME
+   Change --accent (and --ink, the text colour that sits ON the
+   accent) to re-skin the whole app. Nothing else needs editing.
+   Presets:
+     clay   --accent:#e0855c;  --ink:#1e1017
+     teal   --accent:#43c8b6;  --ink:#04211d
+     violet --accent:#a98cf5;  --ink:#150a2b
+     blue   --accent:#62b3ff;  --ink:var(--ink)   (the old look)
+   ============================================================ */
 :root{
-  --bg:#0b1220;--panel:#111a2e;--panel2:#17233d;--line:#263554;
-  --text:#f4f7fb;--muted:#9eabc1;--accent:#62b3ff;--good:#66d3a4;
-  --warn:#f8c66b;--bad:#ff7b7b;--white:#fff;--shadow:0 16px 40px rgba(0,0,0,.22)
+  --bg:#141019;--panel:#1d1722;--panel2:#26202d;--line:#3a3040;
+  --sunken:#120d17;--raised:#191320;
+  --text:#f6f2f0;--muted:#b0a3ae;
+  --accent:#e0855c;--ink:#1e1017;
+  --good:#6fcf9b;--warn:#f0c069;--bad:#ff8a8a;
+  --white:#fff;--shadow:0 16px 40px rgba(0,0,0,.34)
 }
-*{box-sizing:border-box} body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#09101d,#0e1729 42%,#0a1220);color:var(--text);min-height:100vh}
+*{box-sizing:border-box} body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:linear-gradient(180deg,#100c14,#1b1520 42%,#130f18);color:var(--text);min-height:100vh}
 button,input,select{font:inherit}
 button{cursor:pointer}
 .shell{display:grid;grid-template-columns:230px 1fr;min-height:100vh}
-.sidebar{border-right:1px solid var(--line);padding:24px 16px;background:rgba(8,14,26,.92);position:sticky;top:0;height:100vh}
+.sidebar{border-right:1px solid var(--line);padding:24px 16px;background:rgba(15,11,19,.94);position:sticky;top:0;height:100vh}
 .brand{font-size:19px;font-weight:800;letter-spacing:.2px;margin:2px 8px 22px}
 .brand small{display:block;color:var(--muted);font-size:11px;font-weight:600;margin-top:4px}
 .navbtn{width:100%;display:flex;gap:10px;align-items:center;border:0;background:transparent;color:var(--muted);padding:11px 12px;border-radius:10px;margin:3px 0;text-align:left}
@@ -31,11 +44,11 @@ h1{font-size:28px;margin:0} h2{font-size:20px;margin:0 0 14px} h3{font-size:15px
 .sub{color:var(--muted);font-size:14px;margin-top:5px}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
 .btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:9px 12px;border-radius:9px}
-.btn.primary{background:var(--accent);color:#07111e;border-color:transparent;font-weight:800}
-.btn.danger{border-color:#6e3338;color:#ffb1b1;background:#32191d}
+.btn.primary{background:var(--accent);color:var(--ink);border-color:transparent;font-weight:800}
+.btn.danger{border-color:#7d3a3f;color:#ffb8b8;background:#2f1a1e}
 .btn.small{padding:6px 9px;font-size:12px}
 .grid{display:grid;gap:14px}.kpis{grid-template-columns:repeat(5,minmax(150px,1fr));margin-bottom:18px}
-.card{background:rgba(17,26,46,.95);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+.card{background:rgba(29,23,34,.96);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
 .kpi-label{color:var(--muted);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
 .kpi-value{font-size:25px;font-weight:850;margin-top:7px}
 .kpi-foot{font-size:12px;color:var(--muted);margin-top:6px}
@@ -43,37 +56,56 @@ h1{font-size:28px;margin:0} h2{font-size:20px;margin:0 0 14px} h3{font-size:15px
 .two{grid-template-columns:1.25fr .75fr}.three{grid-template-columns:repeat(3,1fr)}
 .section{display:none}.section.active{display:block}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{color:#b9c5d7;font-size:11px;text-transform:uppercase;letter-spacing:.45px;text-align:left;border-bottom:1px solid var(--line);padding:10px 8px}
-td{border-bottom:1px solid rgba(38,53,84,.72);padding:10px 8px;vertical-align:middle}
+th{color:#c9bac5;font-size:11px;text-transform:uppercase;letter-spacing:.45px;text-align:left;border-bottom:1px solid var(--line);padding:10px 8px}
+td{border-bottom:1px solid rgba(58,48,64,.72);padding:10px 8px;vertical-align:middle}
 tbody tr:hover{background:rgba(255,255,255,.018)}
 .money{text-align:right;font-variant-numeric:tabular-nums}.center{text-align:center}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:5px 8px;border-radius:999px;font-size:11px;font-weight:750}
-.pill.paid{background:rgba(102,211,164,.12);color:var(--good)}
-.pill.unpaid{background:rgba(248,198,107,.12);color:var(--warn)}
-.pill.match{background:rgba(98,179,255,.13);color:#88c9ff}
-.input{width:100%;background:#0b1425;border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px}
+.pill.paid{background:rgba(111,207,155,.13);color:var(--good)}
+.pill.unpaid{background:rgba(240,192,105,.13);color:var(--warn)}
+.pill.match{background:rgba(224,133,92,.15);color:#f0a887}
+.input{width:100%;background:var(--sunken);border:1px solid var(--line);border-radius:8px;color:var(--text);padding:9px 10px}
 .input.moneyin{text-align:right}
 .formgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
 label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0 5px;text-transform:uppercase;letter-spacing:.35px}
 .modalback{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:20px;z-index:50}
-.modalback.open{display:flex}.modal{background:#111a2e;border:1px solid var(--line);border-radius:15px;padding:18px;width:min(760px,100%);max-height:88vh;overflow:auto}
+.modalback.open{display:flex}.modal{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:18px;width:min(760px,100%);max-height:88vh;overflow:auto}
 .modalhead{display:flex;justify-content:space-between;align-items:center;margin-bottom:14px}
-.progress{height:9px;background:#0b1425;border-radius:99px;overflow:hidden;border:1px solid var(--line)}
+.progress{height:9px;background:var(--sunken);border-radius:99px;overflow:hidden;border:1px solid var(--line)}
 .progress>div{height:100%;background:linear-gradient(90deg,var(--good),var(--accent));width:0%}
 .cyclechips{display:flex;gap:8px;overflow:auto;padding-bottom:4px;margin-bottom:15px}
-.chip{white-space:nowrap;border:1px solid var(--line);background:#0d1728;color:var(--muted);padding:8px 10px;border-radius:999px}
-.chip.active{background:var(--accent);border-color:var(--accent);color:#07111e;font-weight:800}
-.note{background:#0c1728;border:1px solid var(--line);border-radius:10px;padding:11px;color:var(--muted);font-size:12px;line-height:1.45}
-.drop{border:1px dashed #3a5076;border-radius:12px;padding:24px;text-align:center;background:#0c1526}
+.chip{white-space:nowrap;border:1px solid var(--line);background:var(--sunken);color:var(--muted);padding:8px 10px;border-radius:999px}
+.chip.active{background:var(--accent);border-color:var(--accent);color:var(--ink);font-weight:800}
+.note{background:var(--raised);border:1px solid var(--line);border-radius:10px;padding:11px;color:var(--muted);font-size:12px;line-height:1.45}
+.drop{border:1px dashed #54455c;border-radius:12px;padding:24px;text-align:center;background:var(--raised)}
 .fileinput{display:none}
 .barrow{display:grid;grid-template-columns:140px 1fr 90px;gap:10px;align-items:center;margin:9px 0;font-size:12px}
-.bar{height:10px;background:#0a1323;border-radius:99px;overflow:hidden}.bar span{display:block;height:100%;background:var(--accent)}
+.bar{height:10px;background:var(--sunken);border-radius:99px;overflow:hidden}.bar span{display:block;height:100%;background:var(--accent)}
 .muted{color:var(--muted)}
 .right{text-align:right}
 .empty{padding:30px 10px;color:var(--muted);text-align:center}
-.alertrow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:#0c1728;border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:12px 14px;margin-bottom:9px}
+.alertrow{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;background:var(--raised);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:10px;padding:12px 14px;margin-bottom:9px}
 .alertrow.warn{border-left-color:var(--warn)}.alertrow.bad{border-left-color:var(--bad)}
-.pill.alert{background:rgba(255,123,123,.13);color:var(--bad)}
+.pill.alert{background:rgba(255,138,138,.14);color:var(--bad)}
+/* import diagnostics */
+.diag{border-radius:11px;padding:13px 14px;margin-top:13px;font-size:13px;line-height:1.5;border:1px solid var(--line);background:var(--raised);border-left:3px solid var(--muted)}
+.diag.ok{border-left-color:var(--good)}
+.diag.warn{border-left-color:var(--warn)}
+.diag.bad{border-left-color:var(--bad)}
+.diag.info{border-left-color:var(--accent)}
+.diag strong{display:block;font-size:14px;margin-bottom:5px}
+.diag .diagbody{color:var(--muted)}
+.diag ul{margin:7px 0 0;padding-left:18px}
+.diag li{margin:3px 0}
+.diag code{background:var(--sunken);border:1px solid var(--line);border-radius:5px;padding:1px 5px;font-size:11.5px;word-break:break-all}
+.diagdetail{margin-top:9px;border-top:1px solid var(--line);padding-top:9px}
+.diagdetail summary{cursor:pointer;color:var(--accent);font-weight:700;font-size:12px}
+.diagdetail pre{white-space:pre-wrap;word-break:break-all;background:var(--sunken);border:1px solid var(--line);border-radius:8px;padding:9px;font-size:11px;margin:8px 0 0;color:var(--muted);max-height:210px;overflow:auto}
+tr.clickrow{cursor:pointer}
+tr.clickrow:hover{background:rgba(224,133,92,.07)}
+.cardname{color:var(--accent);font-weight:800}
+.txnmodal-sum{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
+@media(max-width:650px){.txnmodal-sum{grid-template-columns:1fr}}
 @media(max-width:1050px){.shell{grid-template-columns:1fr}.sidebar{height:auto;position:static;border-right:0;border-bottom:1px solid var(--line);display:flex;gap:4px;overflow:auto;padding:10px}.brand{display:none}.navbtn{width:auto;white-space:nowrap}.main{padding:18px}.kpis{grid-template-columns:repeat(2,1fr)}.two,.three{grid-template-columns:1fr}}
 @media(max-width:650px){.kpis{grid-template-columns:1fr}.formgrid{grid-template-columns:1fr 1fr}.topbar{align-items:flex-start;flex-direction:column}.hide-sm{display:none}}
 </style>
@@ -81,7 +113,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 <body>
 <div class="shell">
   <aside class="sidebar">
-    <div class="brand">Cash Tracker <small>Safe-to-spend budgeting</small></div>
+    <div class="brand">Claudia Cash <small>Safe-to-spend budgeting</small></div>
     <button class="navbtn active" data-tab="dashboard">◈ Dashboard</button>
     <button class="navbtn" data-tab="cycles">◷ Pay Cycles</button>
     <button class="navbtn" data-tab="bills">▤ Bills</button>
@@ -233,11 +265,15 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
             <div><label>Default paycheck</label><input id="setPaycheck" class="input moneyin" type="number" step=".01"></div>
             <div><label>Match tolerance ($)</label><input id="setTolerance" class="input moneyin" type="number" step=".01"></div>
             <div><label>Date window (days)</label><input id="setDateWindow" class="input" type="number"></div>
+            <div><label>History window</label><select id="setHistoryYears" class="input">
+              <option value="1">Keep 1 year</option><option value="2">Keep 2 years</option>
+              <option value="3">Keep 3 years</option><option value="5">Keep 5 years</option>
+              <option value="0">Keep everything</option></select></div>
             <div style="align-self:end"><button class="btn primary" onclick="saveSettings()">Save settings</button></div></div><h2 style="margin-top:18px">Funding rules</h2><div class="formgrid"><div><label>Cushion per account</label><input id="setBuffer" class="input moneyin" type="number" step="1"></div><div><label>Card payment basis</label><select id="setCcPolicy" class="input"><option value="minimum">Minimum due</option><option value="statement">Full statement</option><option value="fixed">Fixed per card</option></select></div><div><label>Transfer from (hub)</label><select id="setHub" class="input"></select></div><div style="align-self:end"><button class="btn primary" onclick="saveSettings2()">Save funding rules</button></div>
           </div>
           <div class="note" style="margin-top:14px">Biweekly pay cycles are seeded from the workbook logic. Bill amounts can be overridden for one pay cycle without changing the recurring master amount.</div>
         </div>
-        <div class="card"><h2>Backup / restore</h2><div class="actions"><button class="btn" onclick="exportBackup()">Export JSON backup</button><label class="btn" for="restoreFile">Restore backup</label><input id="restoreFile" type="file" accept=".json" class="fileinput" onchange="restoreBackup(event)"><button class="btn danger" onclick="resetData()">Reset app</button></div><div class="note" style="margin-top:14px">For privacy, this file does not send your financial data anywhere. Browser storage is local to the device/browser where you open it. Merchant-to-bill matches you teach the app are stored in the same local backup.</div></div>
+        <div class="card"><h2>Backup / restore</h2><div class="actions"><button class="btn" onclick="exportBackup()">Export JSON backup</button><label class="btn" for="restoreFile">Restore backup</label><input id="restoreFile" type="file" accept=".json" class="fileinput" onchange="restoreBackup(event)"><button class="btn danger" onclick="resetData()">Reset app</button></div><div id="storageNote" class="note" style="margin-top:14px"></div><div class="note" style="margin-top:10px">For privacy, this file does not send your financial data anywhere. Browser storage is local to the device/browser where you open it. Merchant-to-bill matches you teach the app are stored in the same local backup.</div></div>
       </div>
     </section>
   </main>
@@ -268,6 +304,27 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 </div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveCard()">Save card</button></div></div></div>
 
 
+<div id="cardTxnModal" class="modalback"><div class="modal">
+  <div class="modalhead"><h2 id="cardTxnTitle">Card transactions</h2><button class="btn small" onclick="closeModal('cardTxnModal')">Close</button></div>
+  <div class="txnmodal-sum">
+    <div class="card" style="padding:12px"><div class="kpi-label">Current balance</div><div id="ctBal" class="kpi-value" style="font-size:20px">$0</div></div>
+    <div class="card" style="padding:12px"><div class="kpi-label">Charges</div><div id="ctSpend" class="kpi-value bad" style="font-size:20px">$0</div><div class="kpi-foot" id="ctSpendFoot"></div></div>
+    <div class="card" style="padding:12px"><div class="kpi-label">Payments</div><div id="ctPaid" class="kpi-value good" style="font-size:20px">$0</div><div class="kpi-foot" id="ctPaidFoot"></div></div>
+  </div>
+  <div class="formgrid" style="margin-bottom:12px">
+    <div><label>Search</label><input id="ctSearch" class="input" oninput="renderCardTxns()" placeholder="merchant or category"></div>
+    <div><label>Period</label><select id="ctRange" class="input" onchange="renderCardTxns()">
+      <option value="30">Last 30 days</option><option value="60">Last 60 days</option>
+      <option value="90" selected>Last 90 days</option><option value="180">Last 6 months</option>
+      <option value="365">Last 12 months</option><option value="0">All time</option></select></div>
+    <div><label>Show</label><select id="ctType" class="input" onchange="renderCardTxns()">
+      <option value="all">Everything</option><option value="charges">Charges only</option><option value="payments">Payments &amp; credits</option></select></div>
+    <div style="align-self:end"><button class="btn" onclick="openAcctTxnsFromModal()">Open in Transactions</button></div>
+  </div>
+  <div style="overflow:auto"><table><thead><tr><th>Date</th><th>Merchant</th><th class="hide-sm">Category</th><th class="money">Amount</th></tr></thead><tbody id="cardTxnBody"></tbody></table></div>
+  <div class="note" style="margin-top:13px" id="ctNote"></div>
+</div></div>
+
 <div id="manualMatchModal" class="modalback"><div class="modal">
   <div class="modalhead"><h2>Match transaction to bill</h2><button class="btn small" onclick="closeModal('manualMatchModal')">Close</button></div>
   <input id="manualTxnId" type="hidden">
@@ -288,12 +345,13 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 <div class="actions" style="margin-top:16px"><button class="btn primary" onclick="applyBalanceMap()">Save links</button><button class="btn" onclick="closeModal('balMapModal')">Cancel</button></div></div></div>
 
 <div id="balImportModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Import balances</h2><button class="btn small" onclick="closeModal('balImportModal')">Close</button></div>
-<div class="drop"><strong>Choose a Monarch Balances CSV</strong><div class="sub">The most recent row for each account is used.</div><label class="btn primary" for="balFile" style="display:inline-block;margin-top:13px">Choose CSV</label><input id="balFile" class="fileinput" type="file" accept=".csv,text/csv" onchange="importBalances(event)"></div>
+<div class="drop"><strong>Choose a Monarch Balances CSV</strong><div class="sub">The most recent row for each account is used.</div><label class="btn primary" for="balFile" style="display:inline-block;margin-top:13px">Choose CSV</label><input id="balFile" class="fileinput" type="file" onchange="importBalances(event)"></div>
 <div id="balImportResult"></div>
 <div class="note" style="margin-top:13px">Expected columns: Date, Balance, Account. Accounts are matched by their “statement name”, and anything that doesn’t match a cash account is checked against your credit card names. Card balances are stored as positive amounts owed.</div></div></div>
 
 <div id="txnImportModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Import Monarch transactions</h2><button class="btn small" onclick="closeModal('txnImportModal')">Close</button></div>
-<div class="drop"><strong>Choose a Monarch CSV export</strong><div class="sub">Monthly or full-history CSV is fine. Existing duplicate rows are ignored.</div><label class="btn primary" for="txnFile" style="display:inline-block;margin-top:13px">Choose CSV</label><input id="txnFile" class="fileinput" type="file" accept=".csv,text/csv" onchange="importTransactions(event)"></div>
+<div class="drop"><strong>Choose a Monarch CSV export</strong><div class="sub">Monthly or full-history CSV is fine. Existing duplicate rows are ignored.</div><label class="btn primary" for="txnFile" style="display:inline-block;margin-top:13px">Choose CSV</label><input id="txnFile" class="fileinput" type="file" onchange="importTransactions(event)"></div>
+<div id="txnImportResult"></div>
 <div class="note" style="margin-top:13px">Expected common columns include Date, Merchant, Category, Account, Amount, Notes. The importer is flexible about capitalization and also recognizes “Original Statement” / “Description” as merchant-like fields.</div></div></div>
 
 <script>
@@ -346,12 +404,27 @@ function initial(){
       {id:uid(),institution:'Chase',name:'Checking',type:'Checking',balance:0,include:true}
     ],
     bills, cycles:seedCycles(), assignments:[], transactions:[],
-    settings:{defaultPaycheck:3750.48,tolerance:3,dateWindow:7}, selectedCycle:null, cards:[]
+    settings:{defaultPaycheck:3750.48,tolerance:3,dateWindow:7,historyYears:3}, selectedCycle:null, cards:[]
   };
 }
 let state=load();
 function load(){try{let x=JSON.parse(localStorage.getItem(KEY));if(x){if(!Array.isArray(x.cards))x.cards=[];return x}}catch(e){}return initial()}
-function save(){localStorage.setItem(KEY,JSON.stringify(state))}
+function stateBytes(){try{return JSON.stringify(state).length*2}catch(e){return 0}}
+function fmtMB(b){return (b/1048576).toFixed(2)+' MB'}
+/* save() now reports failure instead of throwing into the void.
+   Safari caps localStorage near 5 MB and counts UTF-16, so a long
+   Monarch history can blow the quota mid-import. */
+function save(){
+  try{ localStorage.setItem(KEY,JSON.stringify(state)); state._saveError=null; return true; }
+  catch(e){
+    const quota = e && (e.name==='QuotaExceededError'||e.code===22||e.code===1014);
+    state._saveError = quota
+      ? `Out of browser storage. Your data is about ${fmtMB(stateBytes())} and this browser allows roughly 5 MB. Nothing was saved. Trim the history window in Settings, then import again.`
+      : `Could not save: ${e&&e.message||e}`;
+    console.error('save failed',e);
+    return false;
+  }
+}
 function ensureAssignments(){
   for(const c of state.cycles){
     for(const b of state.bills.filter(b=>b.recurring)){
@@ -461,7 +534,18 @@ function editCard(id){let c=(state.cards||[]).find(x=>x.id===id);if(!c)return;$(
 function saveCard(){let id=$('cardEditId').value,c=(state.cards||[]).find(x=>x.id===id),o={id:id||uid(),name:$('cardName').value.trim(),balance:Number($('cardBalance').value||0),limit:Number($('cardLimit').value||0),minimum:Number($('cardMin').value||0),planned:Number($('cardPlan').value||0),due:$('cardDue').value};if(!o.name)return alert('Enter a card name.');if(c)Object.assign(c,o);else state.cards.push(o);save();closeModal('cardModal');renderAll()}
 function deleteCard(id){if(confirm('Delete this credit card?')){state.cards=state.cards.filter(x=>x.id!==id);save();renderAll()}}
 
-function renderSettings(){if(!$('setPaycheck'))return;$('setPaycheck').value=state.settings.defaultPaycheck;$('setTolerance').value=state.settings.tolerance;$('setDateWindow').value=state.settings.dateWindow}
+function renderSettings(){if(!$('setPaycheck'))return;$('setPaycheck').value=state.settings.defaultPaycheck;$('setTolerance').value=state.settings.tolerance;$('setDateWindow').value=state.settings.dateWindow;
+  if($('setHistoryYears'))$('setHistoryYears').value=String(state.settings.historyYears??3);
+  renderStorageNote()}
+function renderStorageNote(){
+  const el=$('storageNote');if(!el)return;
+  const b=stateBytes(),pct=Math.min(100,b/5242880*100);
+  const tone=pct>=90?'bad':pct>=70?'warn':'good';
+  el.innerHTML=`<strong>Storage</strong><div style="margin:7px 0"><div class="progress"><div style="width:${pct.toFixed(0)}%"></div></div></div>`+
+    `<span class="${tone}">${fmtMB(b)} used</span> of roughly 5 MB — ${state.transactions.length.toLocaleString()} transactions.`+
+    (pct>=70?' Shorten the history window above before your next import.':'')+
+    (state._saveError?`<div class="bad" style="margin-top:7px">${esc(state._saveError)}</div>`:'');
+}
 function openBalanceModal(){$('balanceFields').innerHTML=state.accounts.map(a=>`<div><label>${esc(a.institution)} — ${esc(a.name)}</label><input class="input moneyin" type="number" step=".01" data-balance="${a.id}" value="${Number(a.balance||0).toFixed(2)}"></div>`).join('');openModal('balanceModal')}
 function saveBalances(){document.querySelectorAll('[data-balance]').forEach(i=>{let a=state.accounts.find(x=>x.id===i.dataset.balance);if(a)a.balance=Number(i.value||0)});save();closeModal('balanceModal');renderAll()}
 function openBillModal(){$('billModalTitle').textContent='Add bill';$('billEditId').value='';$('billName').value='';$('billDue').value='';$('billAmount').value='';$('billRecurring').value='true';$('billAliases').value='';openModal('billModal')}
@@ -475,27 +559,212 @@ function deleteAccount(id){if(confirm('Delete this account?')){state.accounts=st
 function openCycleModal(){$('cycleDate').value=addDays(state.cycles.slice().sort((a,b)=>a.date.localeCompare(b.date)).at(-1)?.date||today(),14);$('cyclePaycheck').value=state.settings.defaultPaycheck;openModal('cycleModal')}
 function saveCycle(){let d=$('cycleDate').value;if(!d)return;state.cycles.push({id:uid(),date:d,paycheck:Number($('cyclePaycheck').value||0)});state.cycles.sort((a,b)=>a.date.localeCompare(b.date));save();closeModal('cycleModal');ensureAssignments();renderAll()}
 function deleteCycle(id){if(!confirm('Delete this pay cycle?'))return;state.cycles=state.cycles.filter(x=>x.id!==id);state.assignments=state.assignments.filter(x=>x.cycleId!==id);if(state.selectedCycle===id)state.selectedCycle=null;save();renderAll()}
-function saveSettings(){state.settings.defaultPaycheck=Number($('setPaycheck').value||0);state.settings.tolerance=Number($('setTolerance').value||0);state.settings.dateWindow=Number($('setDateWindow').value||7);save();renderAll()}
-function openTxnImport(){openModal('txnImportModal')}
-function csvParse(text){
+function saveSettings(){
+  state.settings.defaultPaycheck=Number($('setPaycheck').value||0);
+  state.settings.tolerance=Number($('setTolerance').value||0);
+  state.settings.dateWindow=Number($('setDateWindow').value||7);
+  const y=$('setHistoryYears')?Number($('setHistoryYears').value):(state.settings.historyYears??3);
+  const shrinking=state.settings.historyYears===0||y!==0&&y<state.settings.historyYears;
+  state.settings.historyYears=y;
+  if(y&&shrinking){
+    const c=new Date();c.setFullYear(c.getFullYear()-y);const cut=c.toISOString().slice(0,10);
+    const n=state.transactions.length;
+    const drop=state.transactions.filter(t=>t.date<cut).length;
+    if(drop&&confirm(`Trim ${drop.toLocaleString()} transaction${drop===1?'':'s'} older than ${cut}? This frees storage and cannot be undone — export a backup first if you want to keep them.`)){
+      const keep=state.transactions.filter(t=>t.date>=cut);
+      const ids=new Set(keep.map(t=>t.id));
+      state.assignments.forEach(a=>{if(a.matchedTxnId&&!ids.has(a.matchedTxnId)){a.matchedTxnId=null;if(!a.manual)a.paid=false}});
+      state.transactions=keep;
+    }
+  }
+  save();renderAll();
+  if(state._saveError)alert(state._saveError);
+}
+function openTxnImport(){if($('txnFile'))$('txnFile').value='';if($('txnImportResult'))$('txnImportResult').innerHTML='';openModal('txnImportModal')}
+function csvParse(text,delim){
+  text=String(text||'').replace(/^\uFEFF/,'').replace(/\r\n?/g,'\n');
+  const D=delim||',';
   let rows=[],row=[],field='',q=false;
-  for(let i=0;i<text.length;i++){let c=text[i],n=text[i+1];if(q){if(c==='"'&&n==='"'){field+='"';i++}else if(c==='"')q=false;else field+=c}else{if(c==='"')q=true;else if(c===','){row.push(field);field=''}else if(c==='\n'){row.push(field.replace(/\r$/,''));rows.push(row);row=[];field=''}else field+=c}}
-  if(field.length||row.length){row.push(field.replace(/\r$/,''));rows.push(row)} return rows;
+  for(let i=0;i<text.length;i++){let c=text[i],n=text[i+1];
+    if(q){if(c==='"'&&n==='"'){field+='"';i++}else if(c==='"')q=false;else field+=c}
+    else{if(c==='"')q=true;else if(c===D){row.push(field);field=''}else if(c==='\n'){row.push(field);rows.push(row);row=[];field=''}else field+=c}}
+  if(field.length||row.length){row.push(field);rows.push(row)}
+  return rows.filter(r=>r.some(c=>String(c).trim()!==''));
+}
+/* guess the delimiter from the header line: Monarch is comma, but some
+   regional exports use ; and pasting through Excel can produce tabs */
+function sniffDelim(text){
+  const line=String(text||'').replace(/^\uFEFF/,'').split(/\r\n?|\n/)[0]||'';
+  const counts={',':0,';':0,'\t':0,'|':0};let q=false;
+  for(const ch of line){if(ch==='"')q=!q;else if(!q&&counts[ch]!==undefined)counts[ch]++}
+  return Object.keys(counts).reduce((a,b)=>counts[b]>counts[a]?b:a,',');
+}
+/* parse a date without timezone drift */
+function parseCsvDate(v){
+  const s=String(v||'').trim();if(!s)return null;
+  let m=s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
+  if(m)return `${m[1]}-${String(+m[2]).padStart(2,'0')}-${String(+m[3]).padStart(2,'0')}`;
+  m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})/);
+  if(m){let y=+m[3];if(y<100)y+=2000;return `${y}-${String(+m[1]).padStart(2,'0')}-${String(+m[2]).padStart(2,'0')}`}
+  const d=new Date(s);
+  if(!isNaN(d))return new Date(d.getTime()-d.getTimezoneOffset()*6e4).toISOString().slice(0,10);
+  return null;
+}
+function txnHash(t){return [t.date,t.merchant,t.account,t.amount].join('|').toLowerCase()}
+/* ---------- import diagnostics ---------- */
+function diag(boxId,tone,title,body){
+  const el=$(boxId);
+  if(!el){alert(title.replace(/<[^>]*>/g,''));return}
+  el.innerHTML=`<div class="diag ${tone}"><strong>${title}</strong>${body?`<div class="diagbody">${body}</div>`:''}</div>`;
+}
+function fileFacts(f){
+  return `<code>${esc(f.name)}</code> • ${(f.size/1024).toFixed(1)} KB • type reported as <code>${esc(f.type||'(none)')}</code>`;
+}
+function importTransactions(ev){
+  const BOX='txnImportResult';
+  const f=ev.target&&ev.target.files&&ev.target.files[0];
+  if(!f){
+    diag(BOX,'bad','No file came through',
+      'The picker closed without handing over a file. On iPhone this happens when the file is in iCloud Drive but not downloaded to the device — open it once in the Files app first, then try again.');
+    return;
+  }
+  diag(BOX,'info','Reading…',fileFacts(f));
+  if(f.size===0){
+    diag(BOX,'bad','That file is empty',fileFacts(f)+'<br>Re-export it from Monarch — a 0 KB file usually means the download was interrupted.');
+    ev.target.value='';return;
+  }
+  const rd=new FileReader();
+  rd.onerror=()=>{
+    diag(BOX,'bad','The browser could not read that file',
+      fileFacts(f)+`<br>Error: <code>${esc((rd.error&&rd.error.name)||'unknown')}</code>. If it lives in iCloud Drive, download it locally and retry.`);
+    ev.target.value='';
+  };
+  rd.onload=()=>{
+    try{ processTxnCsv(String(rd.result||''),f,BOX); }
+    catch(err){
+      diag(BOX,'bad','The import hit an error',
+        `<code>${esc(err&&err.message||String(err))}</code>`+
+        `<details class="diagdetail"><summary>Technical detail</summary><pre>${esc((err&&err.stack)||'no stack trace')}</pre></details>`);
+    }
+    ev.target.value='';
+  };
+  rd.readAsText(f);
+}
+function processTxnCsv(text,f,BOX){
+  if(!text.trim()){
+    diag(BOX,'bad','The file read as empty text',fileFacts(f)+'<br>Nothing was in it once decoded. Try re-exporting from Monarch.');return;
+  }
+  const delim=sniffDelim(text);
+  const rows=csvParse(text,delim);
+  const delimName={',':'comma',';':'semicolon','\t':'tab','|':'pipe'}[delim]||delim;
+  const preview=text.slice(0,300);
+  const facts=`${fileFacts(f)}<br>${text.length.toLocaleString()} characters • ${delimName}-separated • ${rows.length} non-empty line${rows.length===1?'':'s'}`;
+  const rawPeek=`<details class="diagdetail"><summary>Show the first few lines of the file</summary><pre>${esc(preview)}${text.length>300?'\n…':''}</pre></details>`;
+
+  if(rows.length<2){
+    diag(BOX,'bad','No data rows found',
+      facts+'<br>The file parsed into '+rows.length+' line'+(rows.length===1?'':'s')+
+      ', so there is a header but no transactions — or the whole file is on one line. '+
+      'If the preview below looks like a web page or a PDF rather than plain text, the wrong file was exported.'+rawPeek);
+    return;
+  }
+
+  const heads=rows[0].map(h=>String(h||'').trim());
+  const want={
+    date:['Date','Transaction Date','Posted Date','Post Date'],
+    merchant:['Merchant','Original Statement','Description','Name','Payee'],
+    amount:['Amount','Transaction Amount','Debit','Credit'],
+    account:['Account','Account Name'],
+    category:['Category']
+  };
+  const found={};
+  Object.keys(want).forEach(k=>{
+    found[k]=heads.find(h=>want[k].some(n=>normalizeHeader(n)===normalizeHeader(h)))||null;
+  });
+  const headList=`<details class="diagdetail"><summary>Columns found in your file (${heads.length})</summary><pre>${heads.map((h,i)=>`${i+1}. ${h}`).join('\n')}</pre></details>`;
+  const mapList='<ul>'+Object.keys(want).map(k=>
+    `<li>${k}: ${found[k]?`matched <code>${esc(found[k])}</code>`:`<span class="bad">not found</span> — looked for ${want[k].join(', ')}`}</li>`
+  ).join('')+'</ul>';
+
+  if(!found.date||!found.amount){
+    diag(BOX,'bad','Required columns are missing',
+      facts+'<br>Every row needs a date and an amount. Here is how your header row lined up:'+mapList+
+      'Rename the columns in the CSV to match, and the import will go through.'+headList+rawPeek);
+    return;
+  }
+
+  const existing=new Set(state.transactions.map(txnHash));
+  const years=Number(state.settings.historyYears||0);
+  let cutoff='0000-01-01';
+  if(years){const c=new Date();c.setFullYear(c.getFullYear()-years);cutoff=c.toISOString().slice(0,10)}
+  const before=state.transactions.length;
+  let added=0,dupes=0,noDate=0,badDate=0,short=0,tooOld=0;
+  const badSamples=[],dupeSamples=[];
+  for(const r of rows.slice(1)){
+    const o={};heads.forEach((h,i)=>o[h]=r[i]!==undefined?r[i]:'');
+    if(r.length<heads.length-1){short++;if(badSamples.length<3)badSamples.push(r.join(delim).slice(0,160));continue}
+    const rawDate=pick(o,want.date);
+    if(!String(rawDate||'').trim()){noDate++;if(badSamples.length<3)badSamples.push(r.join(delim).slice(0,160));continue}
+    const ds=parseCsvDate(rawDate);
+    if(!ds){badDate++;if(badSamples.length<3)badSamples.push(`date "${rawDate}" — ${r.join(delim).slice(0,130)}`);continue}
+    const merchant=pick(o,want.merchant)||'Unknown';
+    const category=pick(o,want.category)||'Uncategorized';
+    const account=pick(o,want.account)||'';
+    const amount=parseAmount(pick(o,want.amount));
+    if(ds<cutoff){tooOld++;continue}
+    const hash=[ds,merchant,account,amount].join('|').toLowerCase();
+    if(existing.has(hash)){dupes++;if(dupeSamples.length<3)dupeSamples.push(`${ds} • ${merchant} • ${money(amount)}`);continue}
+    existing.add(hash);
+    const t={id:uid(),date:ds,merchant,category,account,amount};
+    const note=pick(o,['Notes','Note']); if(note)t.notes=note;
+    /* Original Statement is the single biggest field in a Monarch export and
+       is only read by the PayPal/Apple vendor resolver — keep it just there. */
+    if(/paypal|apple/i.test(merchant)){const st=pick(o,['Original Statement','Description']);if(st)t.statement=st}
+    state.transactions.push(t);
+    added++;
+  }
+
+  const skipped=dupes+noDate+badDate+short+tooOld;
+  const breakdown='<ul>'+
+    `<li><strong>${added}</strong> imported</li>`+
+    (dupes?`<li>${dupes} already in the app (same date, merchant, account and amount)</li>`:'')+
+    (tooOld?`<li>${tooOld} outside your ${years}-year history window (Settings → History window)</li>`:'')+
+    (noDate?`<li>${noDate} skipped — the date cell was blank</li>`:'')+
+    (badDate?`<li>${badDate} skipped — the date could not be read</li>`:'')+
+    (short?`<li>${short} skipped — the row had fewer columns than the header</li>`:'')+
+    '</ul>';
+  const samples=badSamples.length?`<details class="diagdetail"><summary>Show skipped rows</summary><pre>${esc(badSamples.join('\n'))}</pre></details>`:'';
+  const dsamples=dupeSamples.length?`<details class="diagdetail"><summary>Show examples of the duplicates</summary><pre>${esc(dupeSamples.join('\n'))}</pre></details>`:'';
+
+  if(added){
+    if(!save()){
+      state.transactions.length=before;      // roll back — nothing was persisted
+      save();
+      diag(BOX,'bad','Ran out of browser storage',
+        facts+`<br>${added} rows parsed fine, but writing them exceeded this browser's limit, so the import was rolled back and your existing data is untouched.`+
+        `<ul><li>Storage in use: <strong>${fmtMB(stateBytes())}</strong></li><li>Typical Safari limit: about 5 MB</li></ul>`+
+        'Open <strong>Settings → History window</strong>, pick a shorter span (2 or 3 years covers every pay-cycle feature), then import again.');
+      renderAll();return;
+    }
+    runMatching();
+    diag(BOX,'ok',`Imported ${added} transaction${added===1?'':'s'}`,
+      facts+breakdown+(skipped?samples+dsamples:'')+
+      `<div style="margin-top:6px">Storage in use: ${fmtMB(stateBytes())}</div>`+mapList);
+    renderAll();
+  }else if(dupes&&!noDate&&!badDate&&!short){
+    diag(BOX,'warn','Nothing new to add',
+      facts+breakdown+`All ${dupes} rows inside your history window already match a transaction you have stored, so nothing was added. `+
+      'This is what you would see re-importing a file you have already loaded. To start clean, use Settings → Reset app, or export a fresh date range from Monarch.'+dsamples);
+  }else{
+    diag(BOX,'warn','No transactions were imported',
+      facts+breakdown+samples+dsamples+
+      'Every row was skipped for the reason above. The column mapping used was:'+mapList+headList+rawPeek);
+  }
 }
 function normalizeHeader(s){return String(s||'').trim().toLowerCase().replace(/[^a-z0-9]/g,'')}
 function pick(obj,names){for(let n of names){let k=Object.keys(obj).find(k=>normalizeHeader(k)===normalizeHeader(n));if(k&&obj[k]!==undefined)return obj[k]}return ''}
 function parseAmount(v){let s=String(v||'').replace(/[$,()]/g,'').trim();let n=Number(s);if(String(v).includes('(')&&String(v).includes(')'))n=-Math.abs(n);return Number.isFinite(n)?n:0}
-function importTransactions(ev){
-  let f=ev.target.files[0];if(!f)return;let rd=new FileReader();rd.onload=()=>{let rows=csvParse(rd.result);if(rows.length<2)return alert('No rows found.');
-    let heads=rows[0],existing=new Set(state.transactions.map(t=>t.hash)),added=0;
-    for(let r of rows.slice(1)){let o={};heads.forEach((h,i)=>o[h]=r[i]||'');let date=pick(o,['Date','Transaction Date','Posted Date']);if(!date)continue;let d=new Date(date);if(isNaN(d))continue;let ds=d.toISOString().slice(0,10);
-      let merchant=pick(o,['Merchant','Original Statement','Description','Name'])||'Unknown';
-      let category=pick(o,['Category'])||'Uncategorized', account=pick(o,['Account','Account Name'])||'', amount=parseAmount(pick(o,['Amount','Transaction Amount']));
-      let hash=[ds,merchant,account,amount].join('|').toLowerCase();if(existing.has(hash))continue;existing.add(hash);state.transactions.push({id:uid(),date:ds,merchant,category,account,amount,statement:pick(o,['Original Statement','Description']),notes:pick(o,['Notes','Note']),hash});added++;
-    }
-    save();runMatching();closeModal('txnImportModal');ev.target.value='';alert(`Imported ${added} new transaction${added===1?'':'s'}.`);renderAll();
-  };rd.readAsText(f);
-}
+
 
 function openManualMatch(txnId){
   const t=state.transactions.find(x=>x.id===txnId); if(!t)return;
@@ -952,15 +1221,25 @@ function renderAlertBanner(){
 }
 
 /* ---------- balances CSV import ---------- */
-function openBalanceImport(){$('balFile').value='';openModal('balImportModal')}
+function openBalanceImport(){if($('balFile'))$('balFile').value='';if($('balImportResult'))$('balImportResult').innerHTML='';openModal('balImportModal')}
 function importBalances(ev){
-  const f=ev.target.files[0];if(!f)return;
+  const BOX='balImportResult';
+  const f=ev.target&&ev.target.files&&ev.target.files[0];
+  if(!f){diag(BOX,'bad','No file came through','The picker closed without handing over a file. If it lives in iCloud Drive, open it once in the Files app first.');return}
+  diag(BOX,'info','Reading\u2026',fileFacts(f));
+  if(f.size===0){diag(BOX,'bad','That file is empty',fileFacts(f)+'<br>Re-export it from Monarch.');ev.target.value='';return}
   const rd=new FileReader();
+  rd.onerror=()=>{diag(BOX,'bad','The browser could not read that file',fileFacts(f)+`<br>Error: <code>${esc((rd.error&&rd.error.name)||'unknown')}</code>`);ev.target.value=''};
   rd.onload=()=>{
+   try{
+    const text=String(rd.result||'');
+    const delim=sniffDelim(text);
     let rows;
-    try{rows=csvParse(rd.result)}catch(e){return alert('Could not read that file.')}
-    if(!rows||rows.length<2)return alert('No rows found in that CSV.');
-    const heads=rows[0];
+    try{rows=csvParse(text,delim)}catch(e){return diag(BOX,'bad','Could not parse that file',fileFacts(f)+`<br><code>${esc(e.message)}</code>`)}
+    const bfacts=`${fileFacts(f)}<br>${text.length.toLocaleString()} characters \u2022 ${rows.length} non-empty line${rows.length===1?'':'s'}`;
+    if(!rows||rows.length<2)return diag(BOX,'bad','No data rows found',bfacts+'<br>There is a header but no balance rows.'+`<details class="diagdetail"><summary>Show the first few lines</summary><pre>${esc(text.slice(0,300))}</pre></details>`);
+    const heads=rows[0].map(h=>String(h||'').trim());
+    const bheadList=`<details class="diagdetail"><summary>Columns found (${heads.length})</summary><pre>${heads.map((h,i)=>`${i+1}. ${h}`).join('\n')}</pre></details>`;
     const latest={};
     let parsed=0;
     for(const r of rows.slice(1)){
@@ -974,7 +1253,7 @@ function importBalances(ev){
       parsed++;
       if(!latest[acct]||ds>latest[acct].date)latest[acct]={date:ds,balance:bal};
     }
-    if(!parsed)return alert('No usable rows. Expected columns: Date, Balance, Account.');
+    if(!parsed)return diag(BOX,'bad','No usable rows',bfacts+'<br>Every row was missing an account name or a readable date. Expected columns: Date, Balance, Account.'+bheadList);
     recordHistory(rows,heads);
     state.lastBalanceImport=today();
     const matched=[],unmatched=[],cardHits=[],stale=[];
@@ -1005,6 +1284,11 @@ function importBalances(ev){
     if(stale.length)msg+=`\n\nStale (no balance in the last 45 days) — verify these:\n${stale.map(s=>`${s.name}: last seen ${s.date}`).join('\n')}`;
     alert(msg);
     if(unmatched.length)openBalanceMap();
+   }catch(err){
+    diag(BOX,'bad','The balance import hit an error',
+      `<code>${esc(err&&err.message||String(err))}</code>`+
+      `<details class="diagdetail"><summary>Technical detail</summary><pre>${esc((err&&err.stack)||'no stack trace')}</pre></details>`);
+   }
   };
   rd.readAsText(f);
 }
@@ -1241,8 +1525,12 @@ function renderCards2(){
   $('cardsBody').innerHTML=rows.length?rows.map(r=>{
     const u=r.limit?r.bal/r.limit*100:null;
     const av=r.limit?r.limit-r.bal:null;
-    return `<tr>
-      <td><strong>${esc(r.name)}</strong>${r.stale?'<div class="warn" style="font-size:11px">balance unchanged 30 days — check the Monarch connection</div>':''}${r.known?'':'<div class="muted" style="font-size:11px">detected — add limit</div>'}</td>
+    const arg=`'${esc(r.src).replace(/'/g,"\\'")}','${esc(r.name).replace(/'/g,"\\'")}'`;
+    const n=txnsForCard(r.src).length;
+    return `<tr class="clickrow" onclick="openCardTxns(${arg})">
+      <td><span class="cardname">${esc(r.name)}</span>
+      <div class="muted" style="font-size:11px">${n?`${n} transaction${n===1?'':'s'} — tap to view`:'tap to view'}</div>
+      ${r.stale?'<div class="warn" style="font-size:11px">balance unchanged 30 days — check the Monarch connection</div>':''}${r.known?'':'<div class="muted" style="font-size:11px">detected — add limit</div>'}</td>
       <td class="money">${money(r.bal)}</td>
       <td class="money">${r.s?delta(r.s.d30===null?null:-r.s.d30):'<span class="muted">—</span>'}</td>
       <td class="money">${r.limit?money(r.limit):'<span class="muted">—</span>'}</td>
@@ -1250,7 +1538,7 @@ function renderCards2(){
       <td class="money ${u===null?'':(u>=80?'bad':u>=50?'warn':'good')}">${u===null?'—':u.toFixed(1)+'%'}</td>
       <td class="money ${r.t.interestMo>0?'bad':''}">${money(r.t.interestMo)}</td>
       <td class="money">${money(r.t.payMo)}</td>
-      <td class="right"><button class="btn small" onclick="openAcctTxns('${esc(r.src).replace(/'/g,"\\'")}')">Txns</button>
+      <td class="right" onclick="event.stopPropagation()"><button class="btn small" onclick="openCardTxns(${arg})">Txns</button>
       ${r.known?`<button class="btn small" onclick="editCard('${r.card.id}')">Edit</button>`:`<button class="btn small" onclick="adoptCard('${esc(r.name).replace(/'/g,"\\'")}')">Add</button>`}</td></tr>`;
   }).join(''):'<tr><td colspan="9" class="empty">No cards yet. Import a Balances CSV or add one manually.</td></tr>';
 }
@@ -1260,6 +1548,61 @@ function adoptCard(name){
   state.cards.push({id:uid(),name,match:name,balance:s?Math.abs(s.cur):0,limit:0,minimum:0,planned:0,due:''});
   save();renderAll();
   alert(`Added "${name}". Open Edit to set its credit limit and minimum payment — available credit and utilization need the limit.`);
+}
+/* ---------- card drill-down ---------- */
+let _ctCard=null;
+function txnsForCard(src){
+  const n=norm(src);if(!n)return [];
+  return state.transactions.filter(t=>{
+    const a=norm(t.account);
+    return a && (a===n || a.includes(n) || n.includes(a));
+  }).sort((a,b)=>b.date.localeCompare(a.date));
+}
+function openCardTxns(src,label){
+  _ctCard={src,label:label||src};
+  $('cardTxnTitle').textContent=_ctCard.label;
+  const row=cardRows().find(r=>norm(r.src)===norm(src));
+  $('ctBal').textContent=row?money(row.bal):'—';
+  if($('ctSearch'))$('ctSearch').value='';
+  if($('ctRange'))$('ctRange').value='90';
+  if($('ctType'))$('ctType').value='all';
+  renderCardTxns();
+  openModal('cardTxnModal');
+}
+function renderCardTxns(){
+  if(!_ctCard)return;
+  const days=Number(($('ctRange')&&$('ctRange').value)||90);
+  const q=(($('ctSearch')&&$('ctSearch').value)||'').toLowerCase();
+  const type=($('ctType')&&$('ctType').value)||'all';
+  const since=days?daysAgo(days):'0000-01-01';
+  let rows=txnsForCard(_ctCard.src).filter(t=>t.date>=since);
+  const inPeriod=rows.length;
+  const spend=rows.filter(t=>Number(t.amount)<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const paid=rows.filter(t=>Number(t.amount)>0).reduce((s,t)=>s+Number(t.amount),0);
+  $('ctSpend').textContent=money(spend);
+  $('ctPaid').textContent=money(paid);
+  const label=days?`Last ${days} days`:'All time';
+  $('ctSpendFoot').textContent=label;
+  $('ctPaidFoot').textContent=label;
+  if(type==='charges')rows=rows.filter(t=>Number(t.amount)<0);
+  if(type==='payments')rows=rows.filter(t=>Number(t.amount)>0);
+  if(q)rows=rows.filter(t=>`${t.merchant} ${t.category}`.toLowerCase().includes(q));
+  const shown=rows.slice(0,400);
+  $('cardTxnBody').innerHTML=shown.length?shown.map(t=>{
+    const amt=Number(t.amount||0);
+    return `<tr><td style="white-space:nowrap">${fmtDate(t.date).replace(/, \d{4}/,'')}</td>
+    <td>${esc(t.merchant)}</td><td class="hide-sm muted">${esc(t.category||'')}</td>
+    <td class="money ${amt<0?'':'good'}">${money(amt)}</td></tr>`;
+  }).join('')
+   :`<tr><td colspan="4" class="empty">${inPeriod?'Nothing matches those filters.':'No transactions found for this card in that period.'}</td></tr>`;
+  $('ctNote').innerHTML=inPeriod
+    ? `Matching transactions where the account name contains <code>${esc(_ctCard.src)}</code>. Showing ${shown.length} of ${rows.length}.`
+    : `No transactions have an account name matching <code>${esc(_ctCard.src)}</code>. Open Edit on the card and set its <strong>statement name</strong> to exactly how the account appears in your Monarch CSV.`;
+}
+function openAcctTxnsFromModal(){
+  if(!_ctCard)return;
+  closeModal('cardTxnModal');
+  openAcctTxns(_ctCard.src);
 }
 function openAcctTxns(name){
   showTab('transactions');
