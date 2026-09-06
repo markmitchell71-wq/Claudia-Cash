@@ -1,75 +1,39 @@
-# Cash Tracker v4
+Claudia Cash — Sept 6, 2026 update
+What changed
+Dashboard: pinned to the current pay cycle (removed clickable cycle-switcher chips); next paycheck now shows days remaining. "Import Monarch CSV" renamed to "Import Transactions." The 5 KPI cards (Cash on hand, Cycle bills, Already paid, Left to be paid, Safe to spend) are now clickable and open a breakdown modal. Added a red flag banner when the current cycle's paycheck differs from the previous one. Added a subscription-renewal reminder banner (shows subs renewing within ~10 days).
+This pay cycle table: Status is now just "Paid"/"Not Paid". Added separate "Amount Due" and "Actual" columns; Actual shows in red when it's more than Amount Due.
+Sidebar: added a collapsible "Data" group containing Bills, Pay Cycles, Transactions, Monthly History.
+Monthly History: Top categories now shows the current month, then last month, as two separate lists (previously one all-time blended list).
+Credit Cards: credit limit is now editable inline in the table (not just via Edit). Added a note explaining what "Overall utilization" means and why it needs a limit set.
+Investments: hid the duplicate "Retirement & Savings Plan" mirror row entirely (previously shown with a note). Added the 2022 Cadillac XT5 as a manual asset (KBB estimate ~$23,640 private-party, Premium Luxury trim/turbo I4, good condition — adjust in Accounts tab if actual mileage/condition differs). Investment-type accounts with no CSV balance history now show their manually-entered balance instead of being silently excluded.
+Subscriptions: added price-increase flags (red highlight + "was $X" when the latest charge is higher than history), broadened the auto-detect hint list, and the renewal-reminder banner on the dashboard described above.
+Theme: lightened the dark palette slightly (was very close to pure black), added a light/dark toggle in the sidebar, and the light theme uses the Claude-orange (
+#D97757) accent to match the Claudia Cash logo.
+Branding: added the Claudia Cash logo (Mark supplied it) as the browser favicon and sidebar mark; title/meta tags updated from "Cash Tracker" to "Claudia Cash".
+Cross-device cloud sync (new, Sept 6 second update)
 
-Adds account-aware bill funding, transfer alerts, and subscription detection
-to your existing Cash Tracker PWA. Your saved data is preserved — the new
-fields are added on first load, nothing is overwritten.
+Mark's real ask behind the Safari import bug turned out to be bigger than a bug fix: he wants his budget to sync across his devices (phone + MacBook), not just survive quota limits on one device. Shipped:
 
-## What's new
-
-**Funding & Transfers tab**
-- Each bill can now be linked to the account that pays it.
-- Per-account view: bills due this cycle, current balance, expected paycheck
-  deposit, and the net after bills and your cushion.
-- Transfer alerts: how much to move, from which account, to which account,
-  and by what date (2 days before the earliest bill it covers).
-- Credit cards are excluded from the cash math — they're debt, not funding.
-- Savings accounts are used as a transfer source only after checking accounts
-  are exhausted. Moves under $10 are suppressed as noise.
-
-**Subscriptions tab**
-- Detects recurring services from imported history.
-- PayPal charges are resolved to the real vendor from the statement descriptor
-  (`ID:SPOTIFY...` → Spotify, `ID:MICROSOFT` → Microsoft, etc).
-- Vendor names are collapsed so "Google One" and "Google" aren't counted twice.
-- Card payments, bar tabs, gas, and groceries are filtered out.
-- Monthly total, annualized cost, and a "needs review" count for bundled
-  Apple/PayPal charges that can't be itemized from bank data.
-- Hide false positives, or promote any subscription to a tracked bill.
-
-**Balance import**
-- "Import balances" reads a Monarch Balances CSV and uses the most recent row
-  for each account.
-- Cash accounts get their balance set; anything matching a credit card name
-  updates the Credit Cards tab instead, stored as a positive amount owed.
-- Warns about accounts whose newest balance is over 45 days old, and lists any
-  account it couldn't match so you can fix the statement name.
-
-**Other**
-- Import now stores the Original Statement field (needed for PayPal resolution).
-- Accounts have a "statement name" so app accounts match Monarch account names,
-  plus an expected-deposit field.
-- "Add from transactions" builds accounts from your imported history.
-- "Auto-link bills" reads which account actually paid each merchant.
-- "Fix unlinked" proposes matches for bills whose alias doesn't match anything.
-- Settings: per-account cushion, card payment basis, transfer hub account.
-- Transfer alert banner on the dashboard.
-- Service worker now uses network-first so updates land without a hard reset.
-
-## First-run setup (5 minutes, in order)
-
-1. Open the app, go to **Transactions → Import CSV**, load your newest Monarch
-   export. This is required — the new features read from it.
-2. **Accounts → Add from transactions.** Delete any you don't want. Confirm
-   "Include in cash on hand" is on only for real checking/savings.
-3. **Accounts → Edit** each one and set the **statement name** to match the
-   Monarch account name exactly (a dropdown suggests them).
-4. **Funding & Transfers → Detect deposits.** This sets each account's expected
-   per-paycheck deposit from your most recent deposit, not an average.
-5. **Funding & Transfers → Auto-link bills**, then **Fix unlinked** for the rest.
-6. **Settings → Funding rules.** Cushion is set to $0; pick your hub account
-   (the one transfers should come from by default).
-7. **Import balances** from the dashboard using your Balances CSV export, or
-   type them in manually with "Update balances".
-
-## Publishing
-
-Same as before: upload `index.html`, `manifest.webmanifest`, `service-worker.js`,
-and the `icons/` folder to your `cash-tracker` repo, then Settings → Pages →
-Deploy from a branch → main → /(root).
-
-On iPhone: open the Pages URL in Safari → Share → Add to Home Screen.
-
-## Data & privacy
-
-Everything stays in your browser's local storage. Nothing is uploaded. Export a
-JSON backup from Settings before clearing Safari data or changing phones.
+Local storage swapped from localStorage to IndexedDB. Same "one big JSON blob" model as before, but IndexedDB has a vastly higher quota, so the ~5MB, 14,700-row transaction history that was crashing Safari's localStorage now saves without issue on any device/browser. Existing localStorage data (key payCycleBudget_v1) is auto-migrated into IndexedDB the first time the new file loads, then the old key is cleared.
+Supabase backend for real cross-device sync, chosen over Firebase because its Postgres jsonb column has no practical size cap (Firestore documents cap at 1MB, which the transaction history would eventually hit). Mark's project: https://pyufiuvjwljgmcmrgoal.supabase.co. One table, public.budgets (user_id uuid primary key, data jsonb, updated_at), with row-level security so each signed-in user can only read/write their own row. SQL to create it was delivered as supabase_setup.sql.
+Google sign-in (Supabase Auth + Google OAuth) gates the app on first load: "Sign in with Google" to sync across devices, or "Use this device only" to keep using it exactly like before, fully local, no account needed. Saved data pushes to the cloud ~1.2s after every change (debounced), and pulls down on sign-in — if there's no cloud copy yet (first sign-in), the local device's data is pushed up as the starting point.
+Handles the free-tier Supabase quirk where a project pauses after 7 days idle (slower first request) with a friendly "waking up" message instead of a crash, and falls back to local-only data if the cloud is briefly unreachable so Mark is never blocked from using the app.
+The anon/publishable API key Mark provided (sb_publishable_ln55...) is now embedded in the shipped file — this key is meant to be public (it's what every Supabase web app ships with; access control is enforced server-side by the row-level security policies, not by hiding this key).
+Regression-tested: the full 14,942-row Monarch CSV import, the quota-exceeded fallback chain (IndexedDB fails → localStorage fails → friendly alert, no silent data loss), all existing tabs/KPIs/theme toggle, and every sign-in branch (no Supabase configured, sign-in gate shown, "use this device only," first-time sign-in with no cloud data yet, sign-in with existing cloud data, cloud unreachable, sign-out) — all pass with no console/page errors, using a mocked Supabase client since this build environment can't reach Mark's real Google/Supabase auth flow.
+Also fixed a related bug this work surfaced: if a cloud-saved budget were ever missing fields (older schema, manual edit, etc.), the app would crash on boot instead of filling in sane defaults — added a normalizeState() safety net so that can't happen.
+Bugs fixed
+Found and fixed a pre-existing crash: the code wrote to a ccPlanned element that didn't exist anywhere in the HTML (leftover from an older 3-box credit-card KPI layout). It was unguarded, so every renderAll() call threw partway through — which silently prevented Funding & Transfers, Subscriptions, Investments, and most of the Credit Cards page from ever rendering, on every load. This is almost certainly why those pages looked empty/broken. Also hardened renderAll() so one section's error can no longer take down the others.
+Transaction import silently did nothing in Safari on Mark's MacBook (worked fine in Chrome) with a ~14,700-row Monarch CSV export. Confirmed root cause via Mark's screenshot: localStorage quota exceeded — Safari enforces a stricter quota than desktop Chrome, and save() had no error handling, so the failure aborted the import silently. Fixed in three layers:
+Added a global window.onerror/unhandledrejection handler that pops an alert() with the actual error message for ANY uncaught JS error anywhere in the app (throttled to avoid alert storms) — this was also Mark's explicit ask ("provide error pop ups").
+save() now catches storage failures and shows a specific, actionable message (mentions the row count and suggests a shorter date range) instead of silently swallowing the exception.
+Superseded by the IndexedDB switch above — this class of crash shouldn't happen at all now, since IndexedDB's quota is much larger than what any realistic transaction history would hit. The friendly-message fallback is kept as a last resort.
+Optimized runMatching() from an O(assignments² × transactions) nested scan to O(assignments × transactions) using a Set — matters more with a large full-history CSV like this one.
+Delivered files
+index.html — full updated app (single file; local cache is now IndexedDB with automatic migration from the old localStorage key; optional Google sign-in + Supabase cloud sync layered on top)
+icon-180.png — regenerated Add-to-Home-Screen icon from Mark's logo, for his GitHub Pages repo (replaces the current icon-180.png there)
+supabase_setup.sql — SQL to run once in the Supabase SQL editor to create the budgets table + RLS policies
+Still open
+Google OAuth setup on Mark's end (in progress): create a Google Cloud OAuth client (Web application type), add https://pyufiuvjwljgmcmrgoal.supabase.co/auth/v1/callback as an authorized redirect URI, then paste the Client ID + Secret into Supabase's Google provider settings, and set Supabase's Site URL / Redirect URLs to his GitHub Pages URL. Until this is done, "Sign in with Google" won't complete — "Use this device only" still works fully offline in the meantime.
+Once OAuth is live, verify sign-in actually works end-to-end on Mark's real phone + MacBook (this was only tested with a mocked Supabase client in the build environment, since it has no path to Google's real OAuth consent screen or Mark's live Supabase project).
+Mark mentioned a 4th subscriptions ask ("something else") that was never specified — follow up if he brings it back.
+manifest.webmanifest (referenced by the HTML, not part of this file) may still say "Cash Tracker" — Mark should check/update it in his repo if so.
