@@ -101,6 +101,11 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 .navkids.collapsed{display:none}
 .limitin{width:92px;padding:5px 7px;font-size:12px}
 .logo-mark{border-radius:8px;vertical-align:-8px;margin-right:9px}
+.whatif{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px;font-size:13px;color:var(--muted)}
+.whatif input[type=range]{flex:1 1 160px;min-width:120px;accent-color:var(--accent)}
+.runway-svg{width:100%;height:170px;display:block;overflow:visible}
+.runway-legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:4px}
+@media(max-width:820px){.runway-svg{height:200px}}
 .authgate{position:fixed;inset:0;background:rgba(0,0,0,.62);display:none;align-items:center;justify-content:center;padding:20px;z-index:100}
 </style>
 </head>
@@ -115,6 +120,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
     <button class="navbtn" data-tab="subs">↻ Subscriptions</button>
     <button class="navbtn" data-tab="cards">▦ Credit Cards</button>
     <button class="navbtn" data-tab="invest">▲ Investments</button>
+    <button class="navbtn" data-tab="loans">◎ Loans</button>
     <div class="navgroup" onclick="toggleDataGroup()"><span id="dataGroupArrow">▾</span>&nbsp;Data</div>
     <div id="navKids" class="navkids">
       <button class="navbtn sub" data-tab="bills">▤ Bills</button>
@@ -130,6 +136,8 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
         <div><h1>Budget Dashboard</h1><div class="sub">Your main question: what can I safely spend until next payday?</div></div>
         <div class="actions"><button class="btn" onclick="openTxnImport()">Import Transactions</button><button class="btn" onclick="openBalanceImport()">Import balances</button><button class="btn primary" onclick="openBalanceModal()">Update balances</button></div>
       </div>
+      <div id="updateBanner" style="display:none;margin-bottom:14px"></div>
+      <div id="syncConflictBanner" style="display:none;margin-bottom:14px"></div>
       <div id="transferBanner" style="display:none;margin-bottom:14px"></div>
       <div id="paycheckFlag" style="display:none;margin-bottom:14px"></div>
       <div id="subsRenewalBanner" style="display:none;margin-bottom:14px"></div>
@@ -152,6 +160,29 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
           <div class="kpi-foot" id="nextPayDays"></div>
         </div>
       </div>
+
+      <div class="card" id="runwayCard" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:6px">
+          <div>
+            <h2 style="margin:0">Runway to payday</h2>
+            <div class="sub" id="runwaySub">Projected balance day by day, after every bill still due.</div>
+          </div>
+          <div class="right">
+            <div class="kpi-label">Lowest point</div>
+            <div style="font-size:22px;font-weight:850" id="runwayLow">—</div>
+            <div class="kpi-foot" id="runwayLowWhen"></div>
+          </div>
+        </div>
+        <div id="runwayChart" style="margin:10px 0 4px"></div>
+        <div class="whatif">
+          <label style="flex:0 0 auto">What if I spend <strong id="whatIfLabel">$0</strong> today?</label>
+          <input id="whatIfRange" type="range" min="0" max="1000" step="10" value="0" oninput="setWhatIf(this.value)">
+          <input id="whatIfNum" class="input limitin" type="number" min="0" step="10" value="0" oninput="setWhatIf(this.value,true)">
+          <button class="btn small" onclick="setWhatIf(0)">Reset</button>
+        </div>
+        <div class="sub" id="runwayNote"></div>
+      </div>
+
       <div class="grid two">
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center"><h2>This pay cycle</h2><button class="btn small" onclick="showTab('cycles')">Manage</button></div>
@@ -262,6 +293,21 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
       <div class="note" style="margin-top:14px">History accumulates with each import — the more often you import, the finer the movement. Nothing here affects cash on hand or the funding plan.</div>
     </section>
 
+    <section id="loans" class="section">
+      <div class="topbar">
+        <div><h1>Loans</h1><div class="sub">Payoff date, total interest, and what an extra payment buys you.</div></div>
+        <div class="actions"><button class="btn primary" onclick="openLoanModal()">Add loan</button></div>
+      </div>
+      <div class="grid kpis" style="grid-template-columns:repeat(4,minmax(150px,1fr))">
+        <div class="card"><div class="kpi-label">Total owed</div><div id="lnTotal" class="kpi-value">$0</div></div>
+        <div class="card"><div class="kpi-label">Payments per month</div><div id="lnPay" class="kpi-value">$0</div></div>
+        <div class="card"><div class="kpi-label">Interest remaining</div><div id="lnInt" class="kpi-value">$0</div><div class="kpi-foot">If you keep paying as planned</div></div>
+        <div class="card"><div class="kpi-label">Debt-free by</div><div id="lnFree" class="kpi-value" style="font-size:18px">—</div><div class="kpi-foot">Last loan paid off</div></div>
+      </div>
+      <div id="loanCards"></div>
+      <div class="note" style="margin-top:14px">Loans are tracked separately from bills — nothing here changes cash on hand, safe-to-spend, or the funding plan. Update the balance whenever you check your statement.</div>
+    </section>
+
     <section id="settings" class="section">
       <div class="topbar"><div><h1>Settings & Backup</h1><div class="sub">Everything is stored locally in this browser. Export a backup whenever you want portability.</div></div></div>
       <div class="grid two">
@@ -305,6 +351,20 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 <div><label>Card name</label><input id="cardName" class="input"></div><div><label>Statement name</label><input id="cardMatch" class="input" list="txnAcctList" placeholder="matches your CSV name"></div><div><label>Balance</label><input id="cardBalance" class="input moneyin" type="number" step=".01"></div><div><label>Credit limit</label><input id="cardLimit" class="input moneyin" type="number" step=".01"></div><div><label>Minimum payment</label><input id="cardMin" class="input moneyin" type="number" step=".01"></div><div><label>Planned payment</label><input id="cardPlan" class="input moneyin" type="number" step=".01"></div><div><label>Due day</label><input id="cardDue" class="input" type="number" min="1" max="31"></div>
 </div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveCard()">Save card</button></div></div></div>
 
+<div id="loanModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="loanModalTitle">Add loan</h2><button class="btn small" onclick="closeModal('loanModal')">Close</button></div>
+<input id="loanEditId" type="hidden"><div class="formgrid">
+<div><label>What it's for</label><input id="loanName" class="input" placeholder="e.g. 2022 Cadillac XT5"></div>
+<div><label>Lender</label><input id="loanLender" class="input" placeholder="e.g. Ally Bank"></div>
+<div><label>Current balance</label><input id="loanBalance" class="input moneyin" type="number" step=".01" placeholder="from your statement"></div>
+<div><label>APR (%)</label><input id="loanApr" class="input" type="number" step=".001" placeholder="e.g. 6.49"></div>
+<div><label>Monthly payment</label><input id="loanPayment" class="input moneyin" type="number" step=".01"></div>
+<div><label>Extra per month</label><input id="loanExtra" class="input moneyin" type="number" step="1" value="0"></div>
+<div><label>Due day</label><input id="loanDue" class="input" type="number" min="1" max="31"></div>
+<div><label>Linked bill</label><select id="loanBill" class="input"></select></div>
+</div>
+<div class="note" style="margin-top:12px">Balance and APR come off your Ally statement or the payoff quote — the app can't read them from a Monarch export, since the CSV only shows the payment.</div>
+<div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveLoan()">Save loan</button><button class="btn danger" id="loanDeleteBtn" onclick="deleteLoan()" style="display:none">Delete</button></div></div></div>
+
 <div id="kpiModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="kpiModalTitle">Detail</h2><button class="btn small" onclick="closeModal('kpiModal')">Close</button></div><div id="kpiModalBody"></div></div></div>
 
 <div id="authGate" class="authgate">
@@ -345,6 +405,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 
 <div id="txnImportModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Import Monarch transactions</h2><button class="btn small" onclick="closeModal('txnImportModal')">Close</button></div>
 <div class="drop"><strong>Choose a Monarch CSV export</strong><div class="sub">Monthly or full-history CSV is fine. Existing duplicate rows are ignored.</div><label class="btn primary" for="txnFile" style="display:inline-block;margin-top:13px">Choose CSV</label><input id="txnFile" class="fileinput" type="file" accept=".csv,text/csv" onchange="importTransactions(event)"></div>
+<div id="txnImportResult"></div>
 <div class="note" style="margin-top:13px">Expected common columns include Date, Merchant, Category, Account, Amount, Notes. The importer is flexible about capitalization and also recognizes “Original Statement” / “Description” as merchant-like fields.</div></div></div>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
@@ -500,14 +561,46 @@ function save(){
     _cloudSaveTimer=setTimeout(pushStateToCloud, 1200);
   }
 }
+let _cloudStamp=null;      // updated_at of the cloud copy this device is working from
+let _forceOverwrite=false; // set when you explicitly choose "use this device"
 async function pushStateToCloud(){
   if(!sb||!currentUser) return;
   try{
-    const { error } = await sb.from('budgets').upsert({ user_id: currentUser.id, data: state, updated_at: new Date().toISOString() });
+    // Guard against clobbering a newer copy written by another device.
+    if(_cloudStamp && !_forceOverwrite){
+      const { data:remote, error:rErr } = await sb.from('budgets').select('updated_at').eq('user_id', currentUser.id).maybeSingle();
+      if(!rErr && remote && remote.updated_at && remote.updated_at > _cloudStamp){
+        showSyncConflict(remote.updated_at);
+        return; // local device keeps its own copy; nothing is lost either way
+      }
+    }
+    const stamp=new Date().toISOString();
+    const { error } = await sb.from('budgets').upsert({ user_id: currentUser.id, data: state, updated_at: stamp });
     if(error) throw error;
+    _cloudStamp=stamp; _forceOverwrite=false;
+    hideSyncConflict();
   }catch(e){
     _showErrorPopup('Saved on this device, but could not sync to the cloud yet: '+(e&&e.message?e.message:String(e)));
   }
+}
+function showSyncConflict(remoteStamp){
+  const el=$('syncConflictBanner'); if(!el) return;
+  let when='';
+  try{ when=new Date(remoteStamp).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'}); }catch(e){}
+  el.style.display='';
+  el.innerHTML=`<div class="alertrow warn" style="margin:0">
+    <div><strong>⚠︎ Another device saved newer data</strong>
+    <div class="muted" style="font-size:12px">Your synced copy was updated ${when?`on ${when}`:'more recently'} somewhere else. This device's changes are saved locally but not synced yet — pick which copy wins.</div></div>
+    <div class="actions"><button class="btn small" onclick="resolveSyncConflict('remote')">Load the newer copy</button><button class="btn small danger" onclick="resolveSyncConflict('local')">Keep this device</button></div></div>`;
+}
+function hideSyncConflict(){ const el=$('syncConflictBanner'); if(el){ el.style.display='none'; el.innerHTML=''; } }
+async function resolveSyncConflict(which){
+  if(which==='remote'){
+    if(!confirm('Load the newer synced copy? Unsynced changes made on this device will be replaced.')) return;
+    location.reload(); return;
+  }
+  if(!confirm('Overwrite the synced copy with this device\'s data? Changes made on the other device will be lost.')) return;
+  _forceOverwrite=true; hideSyncConflict(); await pushStateToCloud();
 }
 function showSignInGate(msg){
   const el=$('authGate'); if(!el) return;
@@ -558,9 +651,9 @@ async function afterSignIn(user){
   hideSignInGate();
   let loaded=null, needsPush=false;
   try{
-    const { data, error } = await sb.from('budgets').select('data').eq('user_id', user.id).maybeSingle();
+    const { data, error } = await sb.from('budgets').select('data, updated_at').eq('user_id', user.id).maybeSingle();
     if(error) throw error;
-    if(data && data.data) loaded=data.data;
+    if(data && data.data){ loaded=data.data; _cloudStamp=data.updated_at||null; }
   }catch(e){
     _showErrorPopup('Could not reach your synced data yet (a free Supabase project can take a few seconds to wake up) — showing what\'s saved on this device for now: '+(e&&e.message?e.message:String(e)));
   }
@@ -777,13 +870,29 @@ function pick(obj,names){for(let n of names){let k=Object.keys(obj).find(k=>norm
 function parseAmount(v){let s=String(v||'').replace(/[$,()]/g,'').trim();let n=Number(s);if(String(v).includes('(')&&String(v).includes(')'))n=-Math.abs(n);return Number.isFinite(n)?n:0}
 function importTransactions(ev){
   let f=ev.target.files[0];if(!f)return;let rd=new FileReader();rd.onload=()=>{let rows=csvParse(rd.result);if(rows.length<2)return alert('No rows found.');
-    let heads=rows[0],existing=new Set(state.transactions.map(t=>t.hash)),added=0;
-    for(let r of rows.slice(1)){let o={};heads.forEach((h,i)=>o[h]=r[i]||'');let date=pick(o,['Date','Transaction Date','Posted Date']);if(!date)continue;let d=new Date(date);if(isNaN(d))continue;let ds=d.toISOString().slice(0,10);
+    let heads=rows[0],existing=new Set(state.transactions.map(t=>t.hash)),added=0,skipped=0,unreadable=0;
+    let firstDate='',lastDate='';
+    for(let r of rows.slice(1)){let o={};heads.forEach((h,i)=>o[h]=r[i]||'');let date=pick(o,['Date','Transaction Date','Posted Date']);if(!date){if(r.join('').trim())unreadable++;continue}let d=new Date(date);if(isNaN(d)){unreadable++;continue}let ds=d.toISOString().slice(0,10);
+      if(!firstDate||ds<firstDate)firstDate=ds; if(!lastDate||ds>lastDate)lastDate=ds;
       let merchant=pick(o,['Merchant','Original Statement','Description','Name'])||'Unknown';
       let category=pick(o,['Category'])||'Uncategorized', account=pick(o,['Account','Account Name'])||'', amount=parseAmount(pick(o,['Amount','Transaction Amount']));
-      let hash=[ds,merchant,account,amount].join('|').toLowerCase();if(existing.has(hash))continue;existing.add(hash);state.transactions.push({id:uid(),date:ds,merchant,category,account,amount,statement:pick(o,['Original Statement','Description']),notes:pick(o,['Notes','Note']),hash});added++;
+      let hash=[ds,merchant,account,amount].join('|').toLowerCase();if(existing.has(hash)){skipped++;continue}existing.add(hash);state.transactions.push({id:uid(),date:ds,merchant,category,account,amount,statement:pick(o,['Original Statement','Description']),notes:pick(o,['Notes','Note']),hash});added++;
     }
-    save();runMatching();closeModal('txnImportModal');ev.target.value='';alert(`Imported ${added} new transaction${added===1?'':'s'}.`);renderAll();
+    save();runMatching();ev.target.value='';
+    const el=$('txnImportResult');
+    if(el){
+      const span=(firstDate&&lastDate)?`${fmtDate(firstDate)} – ${fmtDate(lastDate)}`:'—';
+      el.innerHTML=`<div class="alertrow ${added?'':'warn'}" style="margin-top:14px;display:block">
+        <strong>${added} new transaction${added===1?'':'s'} added</strong>
+        <div class="muted" style="font-size:12px;margin-top:6px">
+          ${skipped} row${skipped===1?'':'s'} already in your history — skipped, not double-counted<br>
+          ${unreadable?`${unreadable} row${unreadable===1?'':'s'} had no readable date and were ignored<br>`:''}
+          File covered ${span} • your history now holds ${state.transactions.length} rows
+        </div>
+        <div class="actions" style="margin-top:10px"><button class="btn small" onclick="closeModal('txnImportModal');$('txnImportResult').innerHTML=''">Done</button></div>
+      </div>`;
+    } else { closeModal('txnImportModal'); }
+    renderAll();
   };rd.readAsText(f);
 }
 
@@ -929,6 +1038,15 @@ function migrate(){
   (state.cards||[]).forEach(c=>{if(c.match===undefined)c.match=''});
   state.accounts.forEach(a=>{if(a.match===undefined)a.match='';if(a.deposit===undefined)a.deposit=0});
   state.bills.forEach(b=>{if(b.accountId===undefined)b.accountId=''});
+  if(!Array.isArray(state.loans))state.loans=[];
+  if(!state._seededAutoLoan){
+    const carBill=state.bills.find(b=>/car payment/i.test(b.name));
+    state.loans.push({id:uid(),name:'2022 Cadillac XT5',lender:'Ally Bank',balance:0,apr:0,
+      payment:carBill?Number(carBill.amount||0):844.59,extra:0,due:carBill?carBill.due:'22',
+      billId:carBill?carBill.id:''});
+    state._seededAutoLoan=true;
+  }
+  state.loans.forEach(l=>{if(l.extra===undefined)l.extra=0;if(l.billId===undefined)l.billId=''});
   if(!state._addedCadillacAsset){
     state.accounts.push({id:uid(),institution:'2022 Cadillac XT5',name:'2.0T Turbo — backs Car Payment (Ally loan)',type:'Investment',balance:23640,include:false,match:'',deposit:0});
     state._addedCadillacAsset=true;
@@ -1282,6 +1400,8 @@ renderAll=function(){
   try{fillHubSelect();if($('setBuffer')){$('setBuffer').value=Number(state.settings.buffer||0);$('setCcPolicy').value=state.settings.ccPolicy||'minimum'}}catch(e){}
   try{renderAlertBanner()}catch(e){}
   try{renderAcctSync()}catch(e){}
+  try{renderRunway()}catch(e){console.warn('runway',e)}
+  try{renderLoans()}catch(e){console.warn('loans',e)}
 };
 function renderAlertBanner(){
   const el=$('transferBanner');if(!el)return;
@@ -1636,14 +1756,322 @@ saveCard=function(){const editing=$('cardEditId').value,m=$('cardMatch')?$('card
   const c=editing?(state.cards||[]).find(x=>x.id===editing):(state.cards||[]).at(-1);
   if(c){c.match=m;save();renderAll()}};
 
+
+/* ===================== Runway to payday ===================== */
+let _whatIf=0;
+
+function addMonths(s,n){
+  const d=new Date(s+'T12:00:00');
+  const day=d.getDate();
+  d.setDate(1); d.setMonth(d.getMonth()+n);
+  const last=new Date(d.getFullYear(),d.getMonth()+1,0).getDate();
+  d.setDate(Math.min(day,last));
+  return d.toISOString().slice(0,10);
+}
+
+function runwayProjection(extra){
+  const c=currentCycle(); if(!c) return null;
+  const w=cycleWindow(c);
+  const start=today();
+  const payday=w.nextDate;
+  if(payday<=start) return null;
+
+  const cash=state.accounts.filter(a=>a.include).reduce((s,a)=>s+Number(a.balance||0),0);
+
+  // Every unpaid obligation in this cycle, placed on the day it actually hits.
+  const hits={}, overdue=[];
+  state.assignments.filter(a=>a.cycleId===c.id && !a.paid).forEach(a=>{
+    const b=state.bills.find(x=>x.id===a.billId); if(!b) return;
+    const amt=Number(a.amount||0); if(!amt) return;
+    let d=dueDateInWindow(b.due,w.start,w.end);
+    if(!d){
+      // Assigned to this cycle but the date lands outside the window —
+      // show it on the last day before payday rather than pretending it's due now.
+      d=addDays(payday,-1);
+    } else if(d<start){
+      overdue.push(b.name); d=start;   // past due and still unpaid: it hits now
+    }
+    if(d<start) d=start;
+    if(d>payday) d=addDays(payday,-1);
+    (hits[d]=hits[d]||{total:0,names:[]});
+    hits[d].total+=amt; hits[d].names.push(b.name);
+  });
+
+  const nc=nextCycle(c.date);
+  const paycheck=nc?Number(nc.paycheck||0):0;
+
+  const pts=[]; let bal=cash-Number(extra||0), cur=start;
+  while(cur<=payday){
+    if(cur===payday && paycheck) bal+=paycheck;
+    const h=hits[cur];
+    if(h) bal-=h.total;
+    pts.push({date:cur,bal,hit:h||null,isPayday:cur===payday});
+    cur=addDays(cur,1);
+  }
+
+  const beforePay=pts.filter(p=>!p.isPayday);
+  const low=(beforePay.length?beforePay:pts).reduce((m,p)=>p.bal<m.bal?p:m);
+  const endBal=pts[pts.length-1].bal;
+
+  return {pts,low,cash,paycheck,payday,endBal,
+          totalDue:Object.values(hits).reduce((s,h)=>s+h.total,0),
+          overdue:[...new Set(overdue)]};
+}
+
+function renderRunway(){
+  const box=$('runwayChart'); if(!box) return;
+  const p=runwayProjection(_whatIf);
+  if(!p){
+    box.innerHTML='<div class="empty" style="padding:18px 0">Add a future pay cycle to project your runway.</div>';
+    if($('runwayLow'))$('runwayLow').textContent='—';
+    if($('runwayLowWhen'))$('runwayLowWhen').textContent='';
+    if($('runwayNote'))$('runwayNote').textContent='';
+    return;
+  }
+
+  // Keep the what-if slider scaled to the money actually on hand.
+  const rng=$('whatIfRange');
+  if(rng){
+    const max=Math.max(200,Math.ceil(Math.max(p.cash,0)/100)*100);
+    if(Number(rng.max)!==max) rng.max=max;
+    if(Number(rng.value)!==_whatIf) rng.value=Math.min(_whatIf,max);
+  }
+  if($('whatIfNum') && Number($('whatIfNum').value)!==_whatIf) $('whatIfNum').value=_whatIf;
+  if($('whatIfLabel')) $('whatIfLabel').textContent=money(_whatIf);
+
+  $('runwayLow').textContent=money(p.low.bal);
+  $('runwayLow').className=p.low.bal<0?'bad':(p.low.bal<200?'warn':'good');
+  const lowDays=Math.round((new Date(p.low.date+'T12:00:00')-new Date(today()+'T12:00:00'))/86400000);
+  $('runwayLowWhen').textContent=(lowDays<=0?'today':(lowDays===1?'tomorrow':`in ${lowDays} days`))+' • '+fmtDate(p.low.date).replace(/, \d{4}/,'');
+
+  // --- chart geometry ---
+  const W=720,H=170,PADL=8,PADR=8,PADT=14,PADB=26;
+  const vals=p.pts.map(x=>x.bal).concat([0]);
+  let lo=Math.min(...vals), hi=Math.max(...vals);
+  if(hi===lo){hi=lo+100}
+  const pad=(hi-lo)*0.12; lo-=pad; hi+=pad;
+  const X=i=>PADL+(i/(p.pts.length-1||1))*(W-PADL-PADR);
+  const Y=v=>PADT+(1-(v-lo)/(hi-lo))*(H-PADT-PADB);
+
+  const line=p.pts.map((x,i)=>`${i?'L':'M'}${X(i).toFixed(1)},${Y(x.bal).toFixed(1)}`).join(' ');
+  const area=`${line} L${X(p.pts.length-1).toFixed(1)},${Y(lo).toFixed(1)} L${X(0).toFixed(1)},${Y(lo).toFixed(1)} Z`;
+  const negative=p.low.bal<0;
+  const stroke=negative?'var(--bad)':'var(--accent)';
+  const zeroY=(0>=lo&&0<=hi)?Y(0):null;
+
+  // Mark the days a bill actually lands
+  const dots=p.pts.map((x,i)=>{
+    if(!x.hit && !x.isPayday) return '';
+    const cx=X(i).toFixed(1), cy=Y(x.bal).toFixed(1);
+    const col=x.isPayday?'var(--good)':'var(--muted)';
+    const tip=x.isPayday?`Payday +${money(p.paycheck)}`:`${x.hit.names.slice(0,3).join(', ')}${x.hit.names.length>3?` +${x.hit.names.length-3} more`:''} — ${money(x.hit.total)}`;
+    return `<circle cx="${cx}" cy="${cy}" r="3" fill="${col}"><title>${esc(fmtDate(x.date))}: ${esc(tip)}</title></circle>`;
+  }).join('');
+
+  const lowI=p.pts.indexOf(p.low);
+  const lowX=X(lowI), lowY=Y(p.low.bal);
+  const labelAnchor=lowI>p.pts.length*0.7?'end':(lowI<p.pts.length*0.15?'start':'middle');
+
+  box.innerHTML=`<svg class="runway-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" role="img" aria-label="Projected balance until payday">
+    <defs><linearGradient id="rwFill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="${negative?'var(--bad)':'var(--accent)'}" stop-opacity=".26"/>
+      <stop offset="100%" stop-color="${negative?'var(--bad)':'var(--accent)'}" stop-opacity="0"/>
+    </linearGradient></defs>
+    ${zeroY!==null?`<line x1="${PADL}" y1="${zeroY.toFixed(1)}" x2="${W-PADR}" y2="${zeroY.toFixed(1)}" stroke="var(--bad)" stroke-dasharray="4 4" stroke-width="1" vector-effect="non-scaling-stroke" opacity=".7"/>`:''}
+    <path d="${area}" fill="url(#rwFill)"/>
+    <path d="${line}" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>
+    ${dots}
+    <line x1="${lowX.toFixed(1)}" y1="${lowY.toFixed(1)}" x2="${lowX.toFixed(1)}" y2="${(H-PADB).toFixed(1)}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" opacity=".6"/>
+    <circle cx="${lowX.toFixed(1)}" cy="${lowY.toFixed(1)}" r="5" fill="${negative?'var(--bad)':'var(--warn)'}" stroke="var(--cardbg)" stroke-width="2"/>
+    <text x="${lowX.toFixed(1)}" y="${Math.max(12,lowY-11).toFixed(1)}" text-anchor="${labelAnchor}" font-size="12" font-weight="800" fill="${negative?'var(--bad)':'var(--text)'}">${money(p.low.bal)}</text>
+    <text x="${PADL}" y="${H-8}" font-size="11" fill="var(--muted)">today</text>
+    <text x="${W-PADR}" y="${H-8}" text-anchor="end" font-size="11" fill="var(--muted)">payday ${esc(fmtDate(p.payday).replace(/, \d{4}/,''))}</text>
+  </svg>
+  <div class="runway-legend"><span>● bill lands</span><span style="color:var(--good)">● paycheck</span><span>◇ lowest point</span></div>`;
+
+  const note=$('runwayNote');
+  if(note){
+    const bits=[];
+    bits.push(`${money(p.cash)} on hand, ${money(p.totalDue)} in bills still due before ${fmtDate(p.payday).replace(/, \d{4}/,'')}`);
+    if(_whatIf) bits.push(`minus ${money(_whatIf)} spent today`);
+    if(p.overdue.length) bits.push(`${p.overdue.length} past-due bill${p.overdue.length===1?'':'s'} (${p.overdue.slice(0,3).map(esc).join(', ')}) counted as hitting today`);
+    if(p.low.bal<0) bits.push(`you come up ${money(Math.abs(p.low.bal))} short — move the payday for something, or trim before ${fmtDate(p.low.date).replace(/, \d{4}/,'')}`);
+    note.innerHTML=bits.join(' • ');
+    note.className='sub '+(p.low.bal<0?'bad':'');
+  }
+}
+
+function setWhatIf(v,fromNum){
+  _whatIf=Math.max(0,Math.round(Number(v)||0));
+  if(fromNum && $('whatIfRange')){
+    const max=Number($('whatIfRange').max)||1000;
+    if(_whatIf>max) $('whatIfRange').max=Math.ceil(_whatIf/100)*100;
+  }
+  renderRunway();
+}
+
+/* ===================== Loans & amortization ===================== */
+function amortize(balance,apr,payment,extra){
+  let b=Number(balance||0);
+  const r=(Number(apr)||0)/100/12;
+  const p=Number(payment||0)+Number(extra||0);
+  if(b<=0) return {ok:true,months:0,interest:0,payoff:today(),done:true};
+  if(p<=0) return {ok:false,why:'no payment set'};
+  if(p<=b*r) return {ok:false,why:'the payment does not cover monthly interest'};
+  let months=0,interest=0;
+  while(b>0.005 && months<720){
+    const i=b*r; interest+=i; b=b+i-p; months++;
+    if(b<0) b=0;
+  }
+  return {ok:true,months,interest,payoff:addMonths(today(),months)};
+}
+
+function loanSummary(l){
+  const base=amortize(l.balance,l.apr,l.payment,0);
+  const withExtra=amortize(l.balance,l.apr,l.payment,l.extra);
+  return {base,withExtra,
+    savedInterest:(base.ok&&withExtra.ok)?base.interest-withExtra.interest:0,
+    savedMonths:(base.ok&&withExtra.ok)?base.months-withExtra.months:0};
+}
+
+function renderLoans(){
+  const box=$('loanCards'); if(!box) return;
+  const loans=state.loans||[];
+  if(!loans.length){
+    box.innerHTML='<div class="card"><div class="empty" style="padding:22px 0">No loans yet. Add one to see its payoff date.</div></div>';
+    ['lnTotal','lnPay','lnInt','lnFree'].forEach(id=>{if($(id))$(id).textContent=id==='lnFree'?'—':'$0'});
+    return;
+  }
+
+  let owed=0,pay=0,interest=0,latest='';
+  box.innerHTML=loans.map(l=>{
+    const s=loanSummary(l);
+    const incomplete=!Number(l.balance);
+    owed+=Number(l.balance||0);
+    pay+=Number(l.payment||0)+Number(l.extra||0);
+    if(!incomplete && s.withExtra.ok){ interest+=s.withExtra.interest; if(!latest||s.withExtra.payoff>latest)latest=s.withExtra.payoff; }
+
+    const body=incomplete
+      ? `<div class="alertrow warn" style="margin:12px 0 0"><div><strong>Add the balance to see a payoff date</strong><div class="muted" style="font-size:12px">The current balance and APR come off your ${esc(l.lender||'lender')} statement — a Monarch export only shows the payment.</div></div><button class="btn small" onclick="editLoan('${l.id}')">Add them</button></div>`
+      : !s.withExtra.ok
+        ? `<div class="alertrow bad" style="margin:12px 0 0"><div><strong>This never pays off</strong><div class="muted" style="font-size:12px">At ${Number(l.apr)}% APR, ${money(l.payment)}/mo ${esc(s.withExtra.why||'')}. Check the numbers.</div></div></div>`
+        : `<div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr));margin-top:14px">
+            <div><div class="kpi-label">Paid off</div><div style="font-size:19px;font-weight:850;margin-top:5px">${esc(fmtDate(s.withExtra.payoff).replace(/(\w+) \d+, /,'$1 '))}</div><div class="kpi-foot">${s.withExtra.months} payment${s.withExtra.months===1?'':'s'} left</div></div>
+            <div><div class="kpi-label">Interest left</div><div style="font-size:19px;font-weight:850;margin-top:5px" class="warn">${money(s.withExtra.interest)}</div><div class="kpi-foot">${((s.withExtra.interest/Math.max(1,Number(l.balance)))*100).toFixed(0)}% of the balance</div></div>
+            <div><div class="kpi-label">Total to pay</div><div style="font-size:19px;font-weight:850;margin-top:5px">${money(Number(l.balance)+s.withExtra.interest)}</div></div>
+            ${Number(l.extra)>0?`<div><div class="kpi-label">Extra ${money(l.extra)}/mo buys</div><div style="font-size:19px;font-weight:850;margin-top:5px" class="good">${money(s.savedInterest)}</div><div class="kpi-foot">saved • ${s.savedMonths} month${s.savedMonths===1?'':'s'} sooner</div></div>`:''}
+          </div>
+          ${Number(l.apr)?'':`<div class="alertrow warn" style="margin:12px 0 0"><div><strong>No APR entered</strong><div class="muted" style="font-size:12px">These figures assume 0% interest, so the real payoff is later. Add the APR from your statement.</div></div><button class="btn small" onclick="editLoan('${l.id}')">Add APR</button></div>`}
+          ${Number(l.extra)>0?'':`<div class="note" style="margin-top:12px">Adding <strong>$100/mo</strong> would save ${money(amortize(l.balance,l.apr,l.payment,0).interest-amortize(l.balance,l.apr,l.payment,100).interest)} and finish ${amortize(l.balance,l.apr,l.payment,0).months-amortize(l.balance,l.apr,l.payment,100).months} months sooner. <button class="btn small" onclick="setLoanExtra('${l.id}',100)">Try it</button></div>`}
+          <div class="whatif" style="margin-top:12px">
+            <label style="flex:0 0 auto">Extra per month</label>
+            <input type="range" min="0" max="600" step="25" value="${Number(l.extra)||0}" oninput="setLoanExtra('${l.id}',this.value)">
+            <span style="font-weight:800;color:var(--text)">${money(l.extra)}</span>
+          </div>`;
+
+    return `<div class="card" style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div>
+          <h2 style="margin:0">${esc(l.name||'Loan')}</h2>
+          <div class="sub">${esc(l.lender||'—')}${l.due?` • due day ${esc(String(l.due))}`:''} • ${money(l.payment)}/mo${Number(l.apr)?` at ${Number(l.apr)}% APR`:''}</div>
+        </div>
+        <div class="right">
+          <div class="kpi-label">Balance</div>
+          <div class="kpi-value">${money(l.balance)}</div>
+          <div class="actions" style="margin-top:8px;justify-content:flex-end"><button class="btn small" onclick="editLoan('${l.id}')">Edit</button></div>
+        </div>
+      </div>
+      ${body}
+    </div>`;
+  }).join('');
+
+  $('lnTotal').textContent=money(owed);
+  $('lnPay').textContent=money(pay);
+  $('lnInt').textContent=money(interest);
+  $('lnFree').textContent=latest?fmtDate(latest).replace(/(\w+) \d+, /,'$1 '):'—';
+}
+
+function setLoanExtra(id,v){
+  const l=(state.loans||[]).find(x=>x.id===id); if(!l) return;
+  l.extra=Math.max(0,Number(v)||0); save(); renderLoans();
+}
+function fillLoanBillSelect(sel){
+  if(!$('loanBill')) return;
+  $('loanBill').innerHTML='<option value="">Not linked</option>'+state.bills.map(b=>`<option value="${b.id}" ${sel===b.id?'selected':''}>${esc(b.name)}</option>`).join('');
+}
+function openLoanModal(){
+  $('loanModalTitle').textContent='Add loan'; $('loanEditId').value='';
+  ['loanName','loanLender','loanBalance','loanApr','loanPayment','loanDue'].forEach(i=>$(i).value='');
+  $('loanExtra').value='0'; fillLoanBillSelect(''); $('loanDeleteBtn').style.display='none';
+  openModal('loanModal');
+}
+function editLoan(id){
+  const l=(state.loans||[]).find(x=>x.id===id); if(!l) return;
+  $('loanModalTitle').textContent='Edit loan'; $('loanEditId').value=id;
+  $('loanName').value=l.name||''; $('loanLender').value=l.lender||'';
+  $('loanBalance').value=l.balance||''; $('loanApr').value=l.apr||'';
+  $('loanPayment').value=l.payment||''; $('loanExtra').value=l.extra||0; $('loanDue').value=l.due||'';
+  fillLoanBillSelect(l.billId||''); $('loanDeleteBtn').style.display='';
+  openModal('loanModal');
+}
+function saveLoan(){
+  const id=$('loanEditId').value;
+  const o={name:$('loanName').value.trim(),lender:$('loanLender').value.trim(),
+    balance:Number($('loanBalance').value||0),apr:Number($('loanApr').value||0),
+    payment:Number($('loanPayment').value||0),extra:Number($('loanExtra').value||0),
+    due:$('loanDue').value,billId:$('loanBill').value};
+  if(!o.name) return alert('Give the loan a name.');
+  if(!Array.isArray(state.loans)) state.loans=[];
+  const l=state.loans.find(x=>x.id===id);
+  if(l) Object.assign(l,o); else state.loans.push(Object.assign({id:uid()},o));
+  save(); closeModal('loanModal'); renderLoans();
+}
+function deleteLoan(){
+  const id=$('loanEditId').value;
+  if(!id||!confirm('Delete this loan?')) return;
+  state.loans=(state.loans||[]).filter(x=>x.id!==id);
+  save(); closeModal('loanModal'); renderLoans();
+}
+
 initAuthAndData();
 
 </script>
 
 <script>
+function showUpdateBanner(){
+  const el=document.getElementById('updateBanner'); if(!el) return;
+  el.style.display='';
+  el.innerHTML='<div class="alertrow" style="margin:0"><div><strong>✨ A new version of Claudia Cash is ready</strong>'+
+    '<div class="muted" style="font-size:12px">Your data is untouched — this just loads the latest build.</div></div>'+
+    '<button class="btn small primary" onclick="applyUpdate()">Reload now</button></div>';
+}
+function applyUpdate(){
+  try{
+    const reg=window._swReg;
+    if(reg && reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'});
+  }catch(e){}
+  setTimeout(()=>location.reload(), 250);
+}
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
+    navigator.serviceWorker.register('./service-worker.js').then(reg=>{
+      if(!reg) return;
+      window._swReg=reg;
+      const watch=w=>{ if(!w)return; w.addEventListener('statechange',()=>{
+        if(w.state==='installed' && navigator.serviceWorker.controller) showUpdateBanner();
+      })};
+      if(reg.waiting && navigator.serviceWorker.controller) showUpdateBanner();
+      watch(reg.installing);
+      reg.addEventListener('updatefound',()=>watch(reg.installing));
+      // Check for a new build on launch and hourly after that.
+      reg.update().catch(()=>{});
+      setInterval(()=>reg.update().catch(()=>{}), 60*60*1000);
+      document.addEventListener('visibilitychange',()=>{ if(!document.hidden) reg.update().catch(()=>{}); });
+    }).catch(()=>{});
+    let reloaded=false;
+    navigator.serviceWorker.addEventListener('controllerchange',()=>{
+      if(reloaded) return; reloaded=true; location.reload();
+    });
   });
 }
 </script>
