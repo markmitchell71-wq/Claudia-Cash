@@ -236,6 +236,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
         <div class="card"><div class="kpi-label">Need review</div><div id="sFuzzy" class="kpi-value">0</div><div class="kpi-foot">Bundled Apple / PayPal charges</div></div>
       </div>
       <div class="card" style="overflow:auto"><table><thead><tr><th>Service</th><th>Charged to</th><th class="money">Amount</th><th>Cadence</th><th class="money">Per month</th><th class="money">Per year</th><th>Last</th><th></th></tr></thead><tbody id="subsBody"></tbody></table></div>
+      <div id="subsReview"></div>
       <div class="note" style="margin-top:14px">PayPal charges are resolved to the real vendor from the statement descriptor. Charges that read APPLE.COM BILL are an App Store bundle and cannot be split from bank data — check Settings → your name → Subscriptions on your iPhone to itemize those.</div>
     </section>
 
@@ -297,7 +298,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
     </section>
 
     <section id="settings" class="section">
-      <div class="topbar"><div><h1>Settings & Backup</h1><div class="sub">Everything is stored locally in this browser. Export a backup whenever you want portability. <span class="muted">App version v14</span></div></div></div>
+      <div class="topbar"><div><h1>Settings & Backup</h1><div class="sub">Everything is stored locally in this browser. Export a backup whenever you want portability. <span class="muted">App version v15</span></div></div></div>
       <div class="grid two">
         <div class="card"><h2>Pay schedule</h2>
           <div class="formgrid">
@@ -1975,6 +1976,205 @@ function exportPayoffAnalysis(){
   a.click();
   URL.revokeObjectURL(a.href);
 }
+
+/* ===========================================================================
+   Claudia Cash — needs-review breakdown
+   ---------------------------------------------------------------------------
+   Paste this block at the end of the main app script,
+   AFTER the renderAll override. Uses the app's own helpers ($ money esc median
+   fmtDate norm save state) and CSS classes, so it themes with everything else.
+
+   Adds one line of markup — see the note at the bottom.
+   ========================================================================= */
+
+/* ---------- cadence ---------- */
+const REV_CADENCE=[
+  {name:'weekly',min:5,max:9},{name:'biweekly',min:12,max:16},
+  {name:'monthly',min:25,max:36},{name:'bimonthly',min:55,max:66},
+  {name:'quarterly',min:80,max:100},{name:'semiannual',min:165,max:200},
+  {name:'annual',min:340,max:395}
+];
+function revGapDays(a,b){return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/86400000)}
+function revCadence(gaps){
+  if(!gaps.length)return'once';
+  const m=median(gaps),hit=REV_CADENCE.find(c=>m>=c.min&&m<=c.max);
+  return hit?hit.name:'irregular';
+}
+
+/* ---------- saved cluster names ---------- */
+function revClusterKey(sub,amt){return sub.key+'|'+Math.round(Math.abs(amt)*100)}
+function revLookup(sub,amt){
+  if(!Array.isArray(state.subClusterNames))state.subClusterNames=[];
+  return state.subClusterNames.find(r=>r.k===revClusterKey(sub,amt))||null;
+}
+function nameSubCluster(subKey,amt){
+  const sub=detectSubs(true).find(s=>s.key===subKey);if(!sub)return;
+  const cur=revLookup(sub,amt);
+  const name=prompt(`What is the ${money(amt)} charge inside "${sub.vendor}"?`,cur?cur.name:'');
+  if(name===null)return;
+  if(!Array.isArray(state.subClusterNames))state.subClusterNames=[];
+  const k=revClusterKey(sub,amt),i=state.subClusterNames.findIndex(r=>r.k===k);
+  const rec={k,name:name.trim(),excluded:false};
+  if(!rec.name){if(i>=0)state.subClusterNames.splice(i,1)}
+  else if(i>=0)state.subClusterNames[i]=rec;else state.subClusterNames.push(rec);
+  save();renderAll();
+}
+function excludeSubCluster(subKey,amt){
+  const sub=detectSubs(true).find(s=>s.key===subKey);if(!sub)return;
+  if(!Array.isArray(state.subClusterNames))state.subClusterNames=[];
+  const k=revClusterKey(sub,amt),i=state.subClusterNames.findIndex(r=>r.k===k);
+  const rec={k,name:'',excluded:true};
+  if(i>=0)state.subClusterNames[i]=rec;else state.subClusterNames.push(rec);
+  save();renderAll();
+}
+function resetSubClusters(){
+  if(!confirm('Clear every saved name inside the review buckets?'))return;
+  state.subClusterNames=[];save();renderAll();
+}
+
+/* ---------- the breakdown ---------- */
+function subReviewBreakdown(sub){
+  const rows=[...sub.rows].sort((a,b)=>a.date.localeCompare(b.date));
+  const months=Math.max(1,new Set(rows.map(t=>t.date.slice(0,7))).size);
+  const by={};
+  rows.forEach(t=>{const c=Math.round(Math.abs(t.amount)*100);(by[c]=by[c]||[]).push(t)});
+
+  const clusters=Object.keys(by).map(c=>{
+    const hits=by[c],amt=Number(c)/100;
+    const gaps=hits.slice(1).map((h,i)=>revGapDays(hits[i].date,h.date));
+    const saved=revLookup(sub,amt);
+    return {
+      amount:amt,count:hits.length,rows:hits,
+      first:hits[0].date,last:hits.at(-1).date,
+      gap:gaps.length?median(gaps):null,
+      cadence:revCadence(gaps),
+      monthly:amt*hits.length/months,
+      name:saved&&saved.name?saved.name:'',
+      excluded:!!(saved&&saved.excluded),
+      confidence:hits.length===1?'once':(hits.length===2?'low':(hits.length>=4?'high':'mid'))
+    };
+  }).sort((a,b)=>b.monthly-a.monthly);
+
+  const live=clusters.filter(c=>!c.excluded);
+  const recurring=live.filter(c=>c.count>1);
+  const oneOffs=live.filter(c=>c.count===1);
+  const recurringMonthly=recurring.reduce((s,c)=>s+c.monthly,0);
+  const oneOffMonthly=oneOffs.reduce((s,c)=>s+c.monthly,0);
+  const namedMonthly=recurring.filter(c=>c.name).reduce((s,c)=>s+c.monthly,0);
+
+  return {sub,months,clusters,recurring,oneOffs,
+    recurringMonthly,oneOffMonthly,namedMonthly,
+    unnamedMonthly:recurringMonthly-namedMonthly,
+    actualMonthly:recurringMonthly+oneOffMonthly,
+    coverage:recurringMonthly?namedMonthly/recurringMonthly:0};
+}
+
+/* Is a price inside a bundle also standing on its own in the table? */
+function subReviewOverlaps(bd,itemized){
+  const out=[];
+  bd.recurring.forEach(c=>{
+    itemized.forEach(s=>{
+      if(Math.round(Math.abs(s.amount)*100)!==Math.round(c.amount*100))return;
+      out.push({vendor:s.vendor,amount:c.amount,exposure:c.monthly,account:s.account});
+    });
+  });
+  return out;
+}
+
+/* Same charge landing in the PayPal bucket and the direct Apple bucket. */
+function subReviewCrossDupes(fuzzy){
+  const seen={},dupes=[];
+  fuzzy.forEach(s=>s.rows.forEach(t=>{
+    const k=t.date+'|'+Math.round(Math.abs(t.amount)*100);
+    if(seen[k]&&seen[k]!==s.vendor)dupes.push({date:t.date,amount:Math.abs(t.amount),a:seen[k],b:s.vendor});
+    else seen[k]=s.vendor;
+  }));
+  return dupes;
+}
+
+/* ---------- render ---------- */
+function revBar(bd){
+  const t=bd.actualMonthly||1,p=v=>(v/t*100).toFixed(1);
+  return `<div style="display:flex;height:7px;border-radius:4px;overflow:hidden;background:var(--line);margin:10px 0 6px">
+    <i style="width:${p(bd.namedMonthly)}%;background:var(--good)"></i>
+    <i style="width:${p(bd.unnamedMonthly)}%;background:var(--warn)"></i>
+    <i style="width:${p(bd.oneOffMonthly)}%;background:var(--muted)"></i>
+  </div>
+  <div class="muted" style="font-size:11px;margin-bottom:12px">
+    Named ${money(bd.namedMonthly)} • Unnamed recurring ${money(bd.unnamedMonthly)} • One-time ${money(bd.oneOffMonthly)}
+  </div>`;
+}
+
+function revClusterRow(bd,c){
+  const label=c.name||'Unidentified charge';
+  const pill=c.count===1?'':`<span class="pill ${c.confidence==='high'?'low':(c.confidence==='mid'?'mid':'high')}" style="margin-left:6px">${c.confidence==='high'?'confident':(c.confidence==='mid'?'probable':'weak')}</span>`;
+  const seen=c.count===1?`once on ${fmtDate(c.first).replace(/, \d{4}/,'')}`
+    :`${c.count}× • ${c.cadence}${c.gap?` • ~${Math.round(c.gap)}d apart`:''}`;
+  return `<tr>
+    <td><strong>${esc(label)}</strong>${pill}<div class="muted" style="font-size:11px">${seen}</div></td>
+    <td class="money">${money(c.amount)}</td>
+    <td class="money">${money(c.monthly)}</td>
+    <td class="right">
+      <button class="btn small" onclick="nameSubCluster('${esc(bd.sub.key)}',${c.amount})">${c.name?'Rename':'Name this'}</button>
+      <button class="btn small danger" onclick="excludeSubCluster('${esc(bd.sub.key)}',${c.amount})">Not a sub</button>
+    </td></tr>`;
+}
+
+function revBucketCard(bd,itemized){
+  const s=bd.sub,overlaps=subReviewOverlaps(bd,itemized);
+  const drift=Math.abs(bd.actualMonthly-s.monthly);
+
+  const overlapNote=overlaps.length?`<div class="note" style="border-color:var(--dangerborder);background:var(--dangerbg);color:var(--dangertext);margin-bottom:12px">
+    <strong>${overlaps.length} price${overlaps.length>1?'s':''} inside this bundle also ${overlaps.length>1?'appear':'appears'} as ${overlaps.length>1?'their':'its'} own row</strong><br>
+    ${overlaps.map(o=>`${esc(o.vendor)} at ${money(o.amount)} — counted twice inflates your monthly total by ${money(o.exposure)}.`).join('<br>')}
+  </div>`:'';
+
+  const driftNote=drift>=1?`<div class="note" style="margin-bottom:12px">
+    The table shows ${money(s.monthly)}/mo for this bundle, from the median charge times how often it hits.
+    The charges themselves average ${money(bd.actualMonthly)}/mo. When the amounts vary, the second number is the real one.
+  </div>`:'';
+
+  return `<div class="card" style="margin-top:14px">
+    <div style="display:flex;flex-wrap:wrap;gap:6px 12px;align-items:baseline">
+      <strong style="font-size:16px">${esc(s.vendor)}</strong>
+      <span class="muted" style="font-size:12px">${s.via?`billed via ${esc(s.via)} • `:''}${s.rows.length} charges over ${bd.months} month${bd.months===1?'':'s'} • ${Math.round(bd.coverage*100)}% identified</span>
+    </div>
+    ${revBar(bd)}
+    ${overlapNote}${driftNote}
+    <table><thead><tr><th>Charge</th><th class="money">Amount</th><th class="money">Per month</th><th></th></tr></thead>
+    <tbody>
+      ${bd.recurring.length?bd.recurring.map(c=>revClusterRow(bd,c)).join(''):'<tr><td colspan="4" class="empty">No repeating prices in this bucket.</td></tr>'}
+      ${bd.oneOffs.length?`<tr><td colspan="4" class="muted" style="font-size:11px;padding-top:14px">One-time purchases — ${money(bd.oneOffMonthly)}/mo of this bundle is not a subscription at all</td></tr>`+bd.oneOffs.map(c=>revClusterRow(bd,c)).join(''):''}
+    </tbody></table>
+  </div>`;
+}
+
+function renderSubReview(){
+  const el=$('subsReview');if(!el)return;
+  const subs=detectSubs();
+  const fuzzy=subs.filter(s=>s.fuzzy),itemized=subs.filter(s=>!s.fuzzy);
+  if(!fuzzy.length){el.innerHTML='';return}
+
+  const dupes=subReviewCrossDupes(fuzzy);
+  const dupeNote=dupes.length?`<div class="note" style="border-color:var(--dangerborder);background:var(--dangerbg);color:var(--dangertext);margin-top:14px">
+    <strong>${dupes.length} charge${dupes.length>1?'s land':' lands'} in two buckets</strong><br>
+    The same amount on the same day shows up in more than one review row — the import is counting it twice.
+  </div>`:'';
+
+  el.innerHTML=`<div class="topbar" style="margin-top:26px">
+      <div><h2 style="margin:0;font-size:18px">What is inside the review buckets</h2>
+      <div class="sub">Charges grouped by price. Name one and it stays named on every future import.</div></div>
+      <div class="actions"><button class="btn small" onclick="resetSubClusters()">Clear saved names</button></div>
+    </div>
+    ${dupeNote}
+    ${fuzzy.map(s=>revBucketCard(subReviewBreakdown(s),itemized)).join('')}`;
+}
+
+/* ---------- hook into the existing render ---------- */
+const _renderSubsBase=renderSubs;
+renderSubs=function(){_renderSubsBase();try{renderSubReview()}catch(e){console.warn('subReview',e)}};
+
+
 
 initAuthAndData();
 
