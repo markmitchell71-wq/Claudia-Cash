@@ -1,6 +1,6 @@
 {
-  "name": "Cash Tracker",
-  "short_name": "Cash Tracker",
+  "name": "Claudia Cash",
+  "short_name": "Claudia Cash",
   "description": "Pay-cycle budgeting and safe-to-spend tracker.",
   "start_url": "./",
   "scope": "./",
