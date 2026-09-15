@@ -249,6 +249,11 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
         <div class="card"><div class="kpi-label">Remaining</div><div id="bgTotalLeft" class="kpi-value">$0</div></div>
         <div class="card"><div class="kpi-label">% of budget used</div><div id="bgTotalPct" class="kpi-value">0%</div></div>
       </div>
+      <div class="card" style="overflow:auto"><h2>Suggested budgets — based on your last 6 months</h2>
+        <div class="actions" style="margin-bottom:10px"><button class="btn primary" onclick="applyAllSuggestedBudgets()">Use these as my budgets</button></div>
+        <table><thead><tr><th>Category</th><th class="money">6-mo avg/mo</th><th class="money">Last month</th><th class="money">Highest month</th><th class="money">Suggested</th><th></th></tr></thead><tbody id="suggestedBudgetBody"></tbody></table>
+        <div class="note" style="margin-top:10px">Suggested = your average monthly spend in that category over the last 6 months, rounded to the nearest $5. Same exclusions as below — bill and subscription charges aren't counted.</div>
+      </div>
       <div class="card" style="overflow:auto"><h2>Category budgets — <span id="bgMonthLabel"></span></h2>
         <table><thead><tr><th>Category</th><th class="money">Budget</th><th class="money">Spent</th><th class="money">Remaining</th><th>Progress</th><th></th></tr></thead><tbody id="budgetBody"></tbody></table>
       </div>
@@ -410,7 +415,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v16'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v17'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -858,12 +863,65 @@ function deleteBudget(id){
   state.categoryBudgets=(state.categoryBudgets||[]).filter(b=>b.id!==id);
   save();renderAll();
 }
+function last6MonthKeys(){
+  const months=[];
+  for(let i=5;i>=0;i--){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);months.push(d.toISOString().slice(0,7));}
+  return months;
+}
+function suggestedBudgetRows(){
+  const dtxns=discretionaryTxns();
+  const months=last6MonthKeys();
+  const monthSet=new Set(months);
+  const cats=[...new Set(dtxns.filter(t=>monthSet.has(monthKey(t.date))).map(t=>t.category||'Uncategorized'))];
+  const existing={}; (state.categoryBudgets||[]).forEach(b=>existing[b.category]=b);
+  return cats.map(cat=>{
+    const vals=months.map(mk=>categorySpendFor(cat,mk,dtxns));
+    const avg=vals.reduce((a,b)=>a+b,0)/months.length;
+    const last=vals[vals.length-1];
+    const max=Math.max(...vals);
+    const suggested=Math.round(avg/5)*5;
+    return {category:cat, avg, last, max, suggested, budget:existing[cat]||null};
+  }).sort((a,b)=>b.avg-a.avg);
+}
+function addSuggestedBudget(category,amount){
+  if(!Array.isArray(state.categoryBudgets))state.categoryBudgets=[];
+  const existing=state.categoryBudgets.find(b=>b.category===category);
+  if(existing) existing.monthly=amount;
+  else state.categoryBudgets.push({id:uid(),category,monthly:amount});
+  save();renderAll();
+}
+function applyAllSuggestedBudgets(){
+  const rows=suggestedBudgetRows();
+  if(!rows.length)return alert('No spending history yet to suggest budgets from.');
+  if(!confirm(`Set budgets for ${rows.length} categor${rows.length===1?'y':'ies'} based on your last 6 months? This adds new budgets and updates existing ones to the suggested amount.`))return;
+  if(!Array.isArray(state.categoryBudgets))state.categoryBudgets=[];
+  rows.forEach(r=>{
+    const existing=state.categoryBudgets.find(b=>b.category===r.category);
+    if(existing) existing.monthly=r.suggested;
+    else state.categoryBudgets.push({id:uid(),category:r.category,monthly:r.suggested});
+  });
+  save();renderAll();
+}
 function renderBudgeting(){
   if(!$('budgetBody'))return;
   const budgets=state.categoryBudgets||[];
   const mKey=monthKey(today());
   if($('bgMonthLabel'))$('bgMonthLabel').textContent=new Date(mKey+'-01T12:00:00').toLocaleDateString('en-US',{month:'long',year:'numeric'});
   const dtxns=discretionaryTxns();
+
+  if($('suggestedBudgetBody')){
+    const sug=suggestedBudgetRows();
+    $('suggestedBudgetBody').innerHTML=sug.length?sug.map(r=>{
+      const alreadyMatches=r.budget && Math.abs(Number(r.budget.monthly)-r.suggested)<0.005;
+      const action=!r.budget
+        ? `<button class="btn small" onclick="addSuggestedBudget('${esc(r.category)}',${r.suggested})">+ Add at ${money(r.suggested)}</button>`
+        : alreadyMatches
+          ? `<span class="muted" style="font-size:12px">✓ Budgeted</span>`
+          : `<button class="btn small" onclick="addSuggestedBudget('${esc(r.category)}',${r.suggested})">Update to ${money(r.suggested)}</button>`;
+      return `<tr><td>${esc(r.category)}${r.budget&&!alreadyMatches?`<div class="muted" style="font-size:11px">current budget: ${money(r.budget.monthly)}</div>`:''}</td><td class="money">${money(r.avg)}</td><td class="money">${money(r.last)}</td><td class="money">${money(r.max)}</td><td class="money"><strong>${money(r.suggested)}</strong></td><td class="right">${action}</td></tr>`;
+    }).join(''):'<tr><td colspan="6" class="empty">Import more transaction history to see suggested budgets.</td></tr>';
+  }
+
   let totalBudget=0,totalSpent=0;
   const rows=budgets.map(b=>{
     const spent=categorySpendFor(b.category,mKey,dtxns);
