@@ -118,6 +118,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
     <button class="navbtn" data-tab="accounts">▣ Accounts</button>
     <button class="navbtn" data-tab="funding">⇅ Funding &amp; Transfers</button>
     <button class="navbtn" data-tab="subs">↻ Subscriptions</button>
+    <button class="navbtn" data-tab="budgeting">◫ Budgeting</button>
     <button class="navbtn" data-tab="cards">▦ Credit Cards</button>
     <button class="navbtn" data-tab="payoff">◎ Payoff Planner</button>
     <button class="navbtn" data-tab="invest">▲ Investments</button>
@@ -240,6 +241,24 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
       <div class="note" style="margin-top:14px">PayPal charges are resolved to the real vendor from the statement descriptor. Charges that read APPLE.COM BILL are an App Store bundle and cannot be split from bank data — check Settings → your name → Subscriptions on your iPhone to itemize those.</div>
     </section>
 
+    <section id="budgeting" class="section">
+      <div class="topbar"><div><h1>Budgeting</h1><div class="sub">Monthly targets for discretionary spending, checked against real transactions.</div></div><button class="btn primary" onclick="openBudgetModal()">Add budget</button></div>
+      <div class="grid kpis" style="grid-template-columns:repeat(4,minmax(150px,1fr))">
+        <div class="card"><div class="kpi-label">Budgeted this month</div><div id="bgTotalBudget" class="kpi-value">$0</div></div>
+        <div class="card"><div class="kpi-label">Spent this month</div><div id="bgTotalSpent" class="kpi-value">$0</div></div>
+        <div class="card"><div class="kpi-label">Remaining</div><div id="bgTotalLeft" class="kpi-value">$0</div></div>
+        <div class="card"><div class="kpi-label">% of budget used</div><div id="bgTotalPct" class="kpi-value">0%</div></div>
+      </div>
+      <div class="card" style="overflow:auto"><h2>Category budgets — <span id="bgMonthLabel"></span></h2>
+        <table><thead><tr><th>Category</th><th class="money">Budget</th><th class="money">Spent</th><th class="money">Remaining</th><th>Progress</th><th></th></tr></thead><tbody id="budgetBody"></tbody></table>
+      </div>
+      <div class="grid two" style="margin-top:14px">
+        <div class="card"><h2>Trend — last 6 months</h2><div id="budgetTrend"></div></div>
+        <div class="card"><h2>Income vs. spending by pay cycle</h2><div id="incomeVsSpend"></div></div>
+      </div>
+      <div class="note" style="margin-top:14px">Spending totals here exclude anything already matched to a Bill or detected as a recurring Subscription elsewhere in the app, so nothing gets counted twice. Pick any category from your imported transactions and set a monthly target — editing or deleting a budget never touches the underlying transactions.</div>
+    </section>
+
     <section id="cards" class="section">
       <div class="topbar"><div><h1>Credit Card Management</h1><div class="sub">Track debt separately from your pay-cycle cash flow. Card balances do not reduce cash on hand until you schedule a payment.</div></div><button class="btn primary" onclick="openCardModal()">Add credit card</button></div>
       <div class="grid kpis" style="grid-template-columns:repeat(3,minmax(150px,1fr))">
@@ -341,6 +360,11 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 <div><label>Card name</label><input id="cardName" class="input"></div><div><label>Statement name</label><input id="cardMatch" class="input" list="txnAcctList" placeholder="matches your CSV name"></div><div><label>Balance</label><input id="cardBalance" class="input moneyin" type="number" step=".01"></div><div><label>Credit limit</label><input id="cardLimit" class="input moneyin" type="number" step=".01"></div><div><label>APR (%)</label><input id="cardApr" class="input" type="number" step=".01" placeholder="e.g. 24.99"></div><div><label>Minimum payment</label><input id="cardMin" class="input moneyin" type="number" step=".01"></div><div><label>Planned payment</label><input id="cardPlan" class="input moneyin" type="number" step=".01"></div><div><label>Due day</label><input id="cardDue" class="input" type="number" min="1" max="31"></div>
 </div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveCard()">Save card</button></div></div></div>
 
+<div id="budgetModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="budgetModalTitle">Add budget</h2><button class="btn small" onclick="closeModal('budgetModal')">Close</button></div>
+<input id="budgetEditId" type="hidden"><div class="formgrid">
+<div><label>Category</label><select id="budgetCategory" class="input"></select></div><div><label>Monthly target</label><input id="budgetAmount" class="input moneyin" type="number" step=".01"></div>
+</div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveBudget()">Save budget</button></div></div></div>
+
 <div id="kpiModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="kpiModalTitle">Detail</h2><button class="btn small" onclick="closeModal('kpiModal')">Close</button></div><div id="kpiModalBody"></div></div></div>
 
 <div id="authGate" class="authgate">
@@ -386,7 +410,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v15'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v16'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -666,7 +690,7 @@ function showTab(id){
   $(id).classList.add('active');renderAll();
 }
 document.querySelectorAll('.navbtn').forEach(b=>b.onclick=()=>showTab(b.dataset.tab));
-function renderAll(){ensureAssignments();renderDashboard();renderCycles();renderBills();renderAccounts();renderTransactions();renderHistory();renderCards();renderSettings()}
+function renderAll(){ensureAssignments();renderDashboard();renderCycles();renderBills();renderAccounts();renderTransactions();renderHistory();renderCards();renderSettings();try{renderBudgeting()}catch(e){console.warn('budgeting',e)}}
 function renderDashboard(){
   let c=currentCycle();if(!c)return;
   let s=cycleStats(c);
@@ -777,6 +801,121 @@ function openCardModal(){$('cardModalTitle').textContent='Add credit card';$('ca
 function editCard(id){let c=(state.cards||[]).find(x=>x.id===id);if(!c)return;$('cardModalTitle').textContent='Edit credit card';$('cardEditId').value=id;$('cardName').value=c.name;$('cardBalance').value=c.balance;$('cardLimit').value=c.limit;$('cardMin').value=c.minimum;$('cardPlan').value=c.planned;$('cardDue').value=c.due;openModal('cardModal')}
 function saveCard(){let id=$('cardEditId').value,c=(state.cards||[]).find(x=>x.id===id),o={id:id||uid(),name:$('cardName').value.trim(),balance:Number($('cardBalance').value||0),limit:Number($('cardLimit').value||0),minimum:Number($('cardMin').value||0),planned:Number($('cardPlan').value||0),due:$('cardDue').value};if(!o.name)return alert('Enter a card name.');if(c)Object.assign(c,o);else state.cards.push(o);save();closeModal('cardModal');renderAll()}
 function deleteCard(id){if(confirm('Delete this credit card?')){state.cards=state.cards.filter(x=>x.id!==id);save();renderAll()}}
+
+/* ---------- budgeting ---------- */
+function billMatchedTxnIds(){
+  const set=new Set();
+  state.assignments.forEach(a=>{if(a.matchedTxnId)set.add(a.matchedTxnId)});
+  return set;
+}
+function subscriptionTxnIds(){
+  const set=new Set();
+  try{ detectSubs().forEach(s=>{(s.rows||[]).forEach(t=>{if(t&&t.id)set.add(t.id)})}); }catch(e){}
+  return set;
+}
+function discretionaryTxns(){
+  const billIds=billMatchedTxnIds(), subIds=subscriptionTxnIds();
+  return state.transactions.filter(t=>Number(t.amount||0)<0 && !billIds.has(t.id) && !subIds.has(t.id));
+}
+function categorySpendFor(cat,mKey,txns){
+  return (txns||discretionaryTxns()).filter(t=>monthKey(t.date)===mKey && (t.category||'Uncategorized')===cat).reduce((s,t)=>s+Math.abs(Number(t.amount||0)),0);
+}
+function discretionaryCategoryOptions(selected){
+  const used=new Set((state.categoryBudgets||[]).map(b=>b.category));
+  const cats=[...new Set(discretionaryTxns().map(t=>t.category||'Uncategorized'))].sort();
+  if(!cats.length)return '<option value="">No categorized spending yet</option>';
+  return cats.map(c=>`<option value="${esc(c)}" ${c===selected?'selected':''} ${used.has(c)&&c!==selected?'disabled':''}>${esc(c)}</option>`).join('');
+}
+function openBudgetModal(){
+  $('budgetModalTitle').textContent='Add budget';
+  $('budgetEditId').value='';
+  $('budgetCategory').innerHTML=discretionaryCategoryOptions();
+  $('budgetAmount').value='';
+  openModal('budgetModal');
+}
+function editBudget(id){
+  const b=(state.categoryBudgets||[]).find(x=>x.id===id);if(!b)return;
+  $('budgetModalTitle').textContent='Edit budget';
+  $('budgetEditId').value=id;
+  $('budgetCategory').innerHTML=discretionaryCategoryOptions(b.category);
+  $('budgetAmount').value=Number(b.monthly||0).toFixed(2);
+  openModal('budgetModal');
+}
+function saveBudget(){
+  const id=$('budgetEditId').value, category=$('budgetCategory').value, monthly=Number($('budgetAmount').value||0);
+  if(!category)return alert('Pick a category.');
+  if(!Array.isArray(state.categoryBudgets))state.categoryBudgets=[];
+  const existing=state.categoryBudgets.find(b=>b.id===id);
+  if(existing){ existing.category=category; existing.monthly=monthly; }
+  else{
+    if(state.categoryBudgets.some(b=>b.category===category))return alert('That category already has a budget — edit it instead.');
+    state.categoryBudgets.push({id:uid(),category,monthly});
+  }
+  save();closeModal('budgetModal');renderAll();
+}
+function deleteBudget(id){
+  if(!confirm('Delete this budget?'))return;
+  state.categoryBudgets=(state.categoryBudgets||[]).filter(b=>b.id!==id);
+  save();renderAll();
+}
+function renderBudgeting(){
+  if(!$('budgetBody'))return;
+  const budgets=state.categoryBudgets||[];
+  const mKey=monthKey(today());
+  if($('bgMonthLabel'))$('bgMonthLabel').textContent=new Date(mKey+'-01T12:00:00').toLocaleDateString('en-US',{month:'long',year:'numeric'});
+  const dtxns=discretionaryTxns();
+  let totalBudget=0,totalSpent=0;
+  const rows=budgets.map(b=>{
+    const spent=categorySpendFor(b.category,mKey,dtxns);
+    totalBudget+=Number(b.monthly||0); totalSpent+=spent;
+    const left=Number(b.monthly||0)-spent;
+    const pct=b.monthly?Math.min(100,spent/b.monthly*100):(spent>0?100:0);
+    const over=spent>Number(b.monthly||0)+0.005;
+    return `<tr><td>${esc(b.category)}</td><td class="money">${money(b.monthly)}</td><td class="money ${over?'bad':''}">${money(spent)}</td><td class="money ${left<0?'bad':'good'}">${money(left)}</td><td><div class="bar"><span style="width:${pct}%${over?';background:var(--bad)':''}"></span></div></td><td class="right"><button class="btn small" onclick="editBudget('${b.id}')">Edit</button> <button class="btn small danger" onclick="deleteBudget('${b.id}')">Delete</button></td></tr>`;
+  });
+  $('budgetBody').innerHTML=rows.length?rows.join(''):'<tr><td colspan="6" class="empty">No budgets set yet — tap “Add budget” to set a monthly target for a spending category.</td></tr>';
+  $('bgTotalBudget').textContent=money(totalBudget);
+  $('bgTotalSpent').textContent=money(totalSpent);
+  const totalLeft=totalBudget-totalSpent;
+  $('bgTotalLeft').textContent=money(totalLeft);
+  $('bgTotalLeft').className='kpi-value '+(totalLeft<0?'bad':'good');
+  const totalPct=totalBudget?Math.min(999,totalSpent/totalBudget*100):0;
+  $('bgTotalPct').textContent=totalPct.toFixed(0)+'%';
+  $('bgTotalPct').className='kpi-value '+(totalPct>100?'bad':totalPct>=80?'warn':'good');
+
+  if($('budgetTrend')){
+    if(!budgets.length){
+      $('budgetTrend').innerHTML='<div class="empty">Add a budget to see its trend.</div>';
+    } else {
+      const months=[];
+      for(let i=5;i>=0;i--){const d=new Date();d.setDate(1);d.setMonth(d.getMonth()-i);months.push(d.toISOString().slice(0,7));}
+      $('budgetTrend').innerHTML=budgets.map(b=>{
+        const vals=months.map(mk=>categorySpendFor(b.category,mk,dtxns));
+        const max=Math.max(1,Number(b.monthly||0),...vals);
+        const bars=vals.map((v,i)=>`<div class="barrow"><span>${new Date(months[i]+'-01T12:00:00').toLocaleDateString('en-US',{month:'short'})}</span><div class="bar"><span style="width:${v/max*100}%"></span></div><strong class="right">${money(v)}</strong></div>`).join('');
+        return `<div style="margin-bottom:14px"><strong>${esc(b.category)}</strong>${bars}</div>`;
+      }).join('');
+    }
+  }
+
+  if($('incomeVsSpend')){
+    const sorted=state.cycles.slice().sort((a,b)=>a.date.localeCompare(b.date));
+    const past=sorted.filter(c=>c.date<=today()).slice(-6);
+    if(!past.length){
+      $('incomeVsSpend').innerHTML='<div class="empty">No pay cycles yet.</div>';
+    } else {
+      $('incomeVsSpend').innerHTML=past.map(c=>{
+        const idx=sorted.findIndex(x=>x.id===c.id), nc=sorted[idx+1];
+        const start=c.date, end=nc?addDays(nc.date,-1):today();
+        const s=cycleStats(c);
+        const spend=dtxns.filter(t=>t.date>=start&&t.date<=end).reduce((s2,t)=>s2+Math.abs(Number(t.amount||0)),0);
+        const committed=s.planned+spend, pct=c.paycheck?Math.min(100,committed/Number(c.paycheck||1)*100):0;
+        const left=Number(c.paycheck||0)-committed;
+        return `<div class="barrow"><span>${fmtDate(c.date).replace(/, \d{4}/,'')}</span><div class="bar"><span style="width:${pct}%${left<0?';background:var(--bad)':''}"></span></div><strong class="right ${left<0?'bad':''}">${money(left)} left</strong></div>`;
+      }).join('')+'<div class="note" style="margin-top:10px">Bar shows bills + discretionary spend as a share of that cycle’s paycheck. “Left” is paycheck minus bills minus discretionary spend.</div>';
+    }
+  }
+}
 
 function renderSettings(){if(!$('setPaycheck'))return;$('setPaycheck').value=state.settings.defaultPaycheck;$('setTolerance').value=state.settings.tolerance;$('setDateWindow').value=state.settings.dateWindow}
 function renderAcctSync(){
@@ -961,6 +1100,7 @@ function migrate(){
   if(!s.ccPolicy)s.ccPolicy='minimum';
   if(s.hubAccount===undefined)s.hubAccount='';
   if(!Array.isArray(state.subOverrides))state.subOverrides=[];
+  if(!Array.isArray(state.categoryBudgets))state.categoryBudgets=[];
   if(!state.balHist)state.balHist={};
   if(state.lastBalanceImport===undefined)state.lastBalanceImport='';
   (state.cards||[]).forEach(c=>{if(c.match===undefined)c.match='';if(c.apr===undefined)c.apr=0;if(c.excluded===undefined)c.excluded=false});
