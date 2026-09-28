@@ -415,7 +415,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v17'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v18'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -433,7 +433,7 @@ window.addEventListener('unhandledrejection',function(e){
 const $=id=>document.getElementById(id);
 const money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD'}).format(Number(n||0));
 const iso=d=>new Date(d+'T12:00:00').toISOString().slice(0,10);
-const today=()=>new Date().toISOString().slice(0,10);
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')};
 const uid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
 function addDays(s,n){let d=new Date(s+'T12:00:00');d.setDate(d.getDate()+n);return d.toISOString().slice(0,10)}
 function fmtDate(s){return new Date(s+'T12:00:00').toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})}
@@ -675,11 +675,11 @@ function ensureAssignments(){
   save();
 }
 function nextCycle(date){return state.cycles.slice().sort((a,b)=>a.date.localeCompare(b.date)).find(x=>x.date>date)}
+let _viewCycleId=null; // temporary override from the Pay Cycles tab; never saved, so it can't pin the dashboard to an old cycle
 function currentCycle(){
   const sorted=state.cycles.slice().sort((a,b)=>a.date.localeCompare(b.date));
-  if(state.selectedCycle){let c=state.cycles.find(x=>x.id===state.selectedCycle);if(c)return c}
-  let c=[...sorted].reverse().find(x=>x.date<=today())||sorted[0];
-  if(c)state.selectedCycle=c.id;return c;
+  if(_viewCycleId){let c=state.cycles.find(x=>x.id===_viewCycleId);if(c)return c;_viewCycleId=null}
+  return [...sorted].reverse().find(x=>x.date<=today())||sorted[0];
 }
 function cycleStats(c){
   const as=state.assignments.filter(a=>a.cycleId===c.id);
@@ -747,7 +747,7 @@ function renderDashboard(){
   }).join(''):`<tr><td colspan="6" class="empty">No bills assigned to this cycle.</td></tr>`;
   $('accountCards').innerHTML=state.accounts.filter(a=>a.include).map(a=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)"><div><strong>${esc(a.institution)}</strong><div class="muted" style="font-size:12px">${esc(a.name)}</div></div><strong>${money(a.balance)}</strong></div>`).join('');
 }
-function selectCycle(id){state.selectedCycle=id;save();renderAll()}
+function selectCycle(id){_viewCycleId=id;renderAll()}
 function togglePaid(id){let a=state.assignments.find(x=>x.id===id);if(!a)return;a.paid=!a.paid;a.manual=a.paid;a.matchedTxnId=a.paid?null:null;save();renderAll()}
 function editAssignment(id){let a=state.assignments.find(x=>x.id===id);if(!a)return;let b=state.bills.find(x=>x.id===a.billId);if(!b)return;$('assignmentEditId').value=id;$('assignmentName').value=b.name;$('assignmentMaster').value=Number(b.amount||0).toFixed(2);$('assignmentAmount').value=Number(a.amount||0).toFixed(2);openModal('assignmentModal')}
 function saveAssignmentOverride(){let a=state.assignments.find(x=>x.id===$('assignmentEditId').value);if(!a)return;a.amount=Number($('assignmentAmount').value||0);save();closeModal('assignmentModal');renderAll()}
@@ -998,7 +998,7 @@ function saveAccount(){let id=$('acctEditId').value,a=id&&state.accounts.find(x=
 function deleteAccount(id){if(confirm('Delete this account?')){state.accounts=state.accounts.filter(x=>x.id!==id);save();renderAll()}}
 function openCycleModal(){$('cycleDate').value=addDays(state.cycles.slice().sort((a,b)=>a.date.localeCompare(b.date)).at(-1)?.date||today(),14);$('cyclePaycheck').value=state.settings.defaultPaycheck;openModal('cycleModal')}
 function saveCycle(){let d=$('cycleDate').value;if(!d)return;state.cycles.push({id:uid(),date:d,paycheck:Number($('cyclePaycheck').value||0)});state.cycles.sort((a,b)=>a.date.localeCompare(b.date));save();closeModal('cycleModal');ensureAssignments();renderAll()}
-function deleteCycle(id){if(!confirm('Delete this pay cycle?'))return;state.cycles=state.cycles.filter(x=>x.id!==id);state.assignments=state.assignments.filter(x=>x.cycleId!==id);if(state.selectedCycle===id)state.selectedCycle=null;save();renderAll()}
+function deleteCycle(id){if(!confirm('Delete this pay cycle?'))return;state.cycles=state.cycles.filter(x=>x.id!==id);state.assignments=state.assignments.filter(x=>x.cycleId!==id);if(_viewCycleId===id)_viewCycleId=null;save();renderAll()}
 function saveSettings(){state.settings.defaultPaycheck=Number($('setPaycheck').value||0);state.settings.tolerance=Number($('setTolerance').value||0);state.settings.dateWindow=Number($('setDateWindow').value||7);save();renderAll()}
 function openTxnImport(){openModal('txnImportModal')}
 function csvParse(text){
@@ -2382,6 +2382,8 @@ initAuthAndData();
 </script>
 
 <script>
+let _lastRenderDay=today();
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&today()!==_lastRenderDay){_lastRenderDay=today();_viewCycleId=null;try{renderAll()}catch(e){console.warn(e)}}});
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     navigator.serviceWorker.register('./service-worker.js').catch(()=>{});
