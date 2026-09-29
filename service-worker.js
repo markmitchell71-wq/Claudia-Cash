@@ -1,4 +1,4 @@
-const CACHE='cash-tracker-v15';
+const CACHE='cash-tracker-v19';
 const ASSETS=['./','./index.html','./manifest.webmanifest','./icon-192.png','./icon-512.png','./icon-180.png'];
 
 // Install the new build into a fresh cache, then WAIT.
