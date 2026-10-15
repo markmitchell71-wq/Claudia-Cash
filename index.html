@@ -93,6 +93,18 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 .pill.high{background:rgba(255,123,123,.12);color:var(--bad)}
 .pill.mid{background:rgba(248,198,107,.12);color:var(--warn)}
 .pill.low{background:rgba(102,211,164,.12);color:var(--good)}
+tr.subrow td{background:rgba(98,179,255,.07)}tr.subrow td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.pill.sub{background:rgba(98,179,255,.13);color:var(--accent);padding:2px 7px;font-size:10px;margin-left:4px}
+.minikpis{display:grid;grid-template-columns:repeat(4,minmax(110px,1fr));gap:10px;margin:10px 0}.minikpis>div{background:var(--panel2);border-radius:10px;padding:10px 12px}.minikpis .v{font-size:17px;font-weight:800;margin-top:2px}
+@media(max-width:700px){.minikpis{grid-template-columns:repeat(2,1fr)}}
+.attn{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap;padding:12px 0;border-bottom:1px solid var(--line)}.attn:last-child{border-bottom:0}
+.attn .why{font-size:12px;margin-top:4px;line-height:1.45}.attn .why .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:1px}
+.dot.bad{background:var(--bad)}.dot.warn{background:var(--warn)}.dot.good{background:var(--good)}.dot.info{background:var(--accent)}
+.attn .acts{display:flex;gap:6px;flex-wrap:wrap;align-items:flex-start}
+.btn.small.on{background:var(--accent);color:#07111e;border-color:transparent}
+tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-transform:uppercase;letter-spacing:.04em}
+.typerow{display:block;cursor:pointer;padding:8px 6px;margin:2px -6px}.typerow:hover{background:var(--panel2);border-radius:8px}
+.subtools{display:flex;gap:10px;flex-wrap:wrap;align-items:end;margin-bottom:10px}.subtools label{font-size:11px}.subtools .input{min-width:130px}
 .rank{font-weight:850;font-size:16px}
 .allocation{display:grid;grid-template-columns:32px 1fr 100px;gap:10px;padding:9px 0;border-bottom:1px solid rgba(38,53,84,.72);align-items:center}
 @media(max-width:1050px){.shell{grid-template-columns:1fr}.sidebar{height:auto;position:static;border-right:0;border-bottom:1px solid var(--line);display:flex;gap:4px;overflow:auto;padding:10px}.brand{display:none}.navbtn{width:auto;white-space:nowrap}.main{padding:18px}.kpis{grid-template-columns:repeat(2,1fr)}.two,.three{grid-template-columns:1fr}}
@@ -185,6 +197,18 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
           <div class="kpi-foot" id="nextPayDays"></div>
         </div>
       </div>
+      <div id="cycleSubsCard" class="card" style="margin-bottom:18px;display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>🔁 Subscriptions this pay period</h2><button class="btn small" onclick="showTab('subs')">Manage</button></div>
+        <div class="sub" id="cycleSubsWindow"></div>
+        <div class="minikpis">
+          <div><div class="kpi-label">Expected</div><div class="v" id="csTotal">$0</div></div>
+          <div><div class="kpi-label">Charged so far</div><div class="v good" id="csCharged">$0</div></div>
+          <div><div class="kpi-label">Still to come</div><div class="v warn" id="csUpcoming">$0</div></div>
+          <div><div class="kpi-label">From cash, not a Bill</div><div class="v" id="csUncounted">$0</div></div>
+        </div>
+        <div id="cycleSubsNote"></div>
+        <div style="overflow:auto"><table><thead><tr><th>Service</th><th>Date</th><th class="money">Amount</th><th>Paid with</th><th>Status</th></tr></thead><tbody id="cycleSubsBody"></tbody></table></div>
+      </div>
       <div class="grid two">
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center"><h2>This pay cycle</h2><button class="btn small" onclick="showTab('cycles')">Manage</button></div>
@@ -256,13 +280,28 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
     <section id="subs" class="section">
       <div class="topbar"><div><h1>Subscriptions</h1><div class="sub">Recurring services detected from your history, including ones billed through PayPal.</div></div>
       <div class="actions"><button class="btn" onclick="showIgnored()">Hidden items</button></div></div>
-      <div class="grid kpis" style="grid-template-columns:repeat(4,minmax(150px,1fr))">
-        <div class="card"><div class="kpi-label">Monthly total</div><div id="sMonthly" class="kpi-value">$0</div></div>
-        <div class="card"><div class="kpi-label">Annualized</div><div id="sAnnual" class="kpi-value">$0</div></div>
-        <div class="card"><div class="kpi-label">Active subscriptions</div><div id="sCount" class="kpi-value">0</div></div>
+      <div class="grid kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
+        <div class="card"><div class="kpi-label">Monthly total</div><div id="sMonthly" class="kpi-value">$0</div><div class="kpi-foot" id="sAnnual">$0/yr</div></div>
+        <div class="card"><div class="kpi-label">Active subscriptions</div><div id="sCount" class="kpi-value">0</div><div class="kpi-foot" id="sDecided"></div></div>
+        <div class="card" onclick="document.getElementById('subsAttnCard').scrollIntoView({behavior:'smooth'})"><div class="kpi-label">Needs attention</div><div id="sAttn" class="kpi-value">0</div><div class="kpi-foot">Tap to jump to the queue</div></div>
+        <div class="card"><div class="kpi-label">On high-APR cards</div><div id="sApr" class="kpi-value">$0</div><div class="kpi-foot" id="sAprFoot">per month at 20%+ APR</div></div>
         <div class="card"><div class="kpi-label">Need review</div><div id="sFuzzy" class="kpi-value">0</div><div class="kpi-foot">Bundled Apple / PayPal charges</div></div>
       </div>
-      <div class="card" style="overflow:auto"><table><thead><tr><th>Service</th><th>Charged to</th><th class="money">Amount</th><th>Cadence</th><th class="money">Per month</th><th class="money">Per year</th><th>Last</th><th></th></tr></thead><tbody id="subsBody"></tbody></table></div>
+      <div class="card" id="subsAttnCard" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>⚑ Needs attention</h2><span class="muted" style="font-size:12px">Decide Keep, Review, or Cancel to clear an item</span></div>
+        <div id="subsAttn"></div>
+      </div>
+      <div class="card" style="margin-bottom:18px">
+        <h2>By type</h2><div class="sub">Tap a type to filter the table. Three or more in one type is flagged as possible overlap.</div>
+        <div id="subsTypes" style="margin-top:10px"></div>
+      </div>
+      <div class="card" style="overflow:auto">
+        <div class="subtools">
+          <div><label>Sort</label><select id="subSort" class="input" onchange="renderSubs()"><option value="cost">Cost (high → low)</option><option value="next">Next charge</option><option value="name">Name</option><option value="type">Type (grouped)</option></select></div>
+          <div><label>Decision</label><select id="subFilterDec" class="input" onchange="renderSubs()"><option value="">All</option><option value="none">Undecided</option><option value="keep">Keep</option><option value="review">Review</option><option value="cancel">Cancel</option></select></div>
+          <div><label>Type</label><select id="subFilterType" class="input" onchange="renderSubs()"><option value="">All types</option></select></div>
+        </div>
+        <table><thead><tr><th>Service</th><th>Type</th><th>Charged to</th><th class="money">Amount</th><th>Cadence</th><th class="money">Per month</th><th>Next charge</th><th>Decision</th><th></th></tr></thead><tbody id="subsBody"></tbody></table></div>
       <div id="subsReview"></div>
       <div class="note" style="margin-top:14px">PayPal charges are resolved to the real vendor from the statement descriptor. Charges that read APPLE.COM BILL are an App Store bundle and cannot be split from bank data — check Settings → your name → Subscriptions on your iPhone to itemize those.</div>
     </section>
@@ -369,10 +408,17 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 
 <div id="balanceModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Update account balances</h2><button class="btn small" onclick="closeModal('balanceModal')">Close</button></div><div class="note" style="margin-bottom:12px">Type them in below, or <button class="btn small" onclick="closeModal('balanceModal');openBalanceImport()">import a Balances CSV</button> to fill them automatically.</div><div id="balanceFields" class="formgrid"></div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveBalances()">Save balances</button></div></div></div>
 
+<div id="subModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="subModalTitle">Manage subscription</h2><button class="btn small" onclick="closeModal('subModal')">Close</button></div>
+<input id="subModalKey" type="hidden"><div id="subModalFacts" class="note" style="margin-bottom:12px"></div><div class="formgrid">
+<div><label>Decision</label><select id="subModalDec" class="input"><option value="">Undecided</option><option value="keep">Keep</option><option value="review">Review</option><option value="cancel">Cancel</option></select></div>
+<div><label>Type</label><select id="subModalType" class="input"></select></div>
+<div style="grid-column:1/-1"><label>Note (e.g. how to cancel, who uses it)</label><input id="subModalNote" class="input"></div>
+</div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveSubModal()">Save</button></div></div></div>
 <div id="billModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="billModalTitle">Add bill</h2><button class="btn small" onclick="closeModal('billModal')">Close</button></div>
 <input id="billEditId" type="hidden"><div class="formgrid">
 <div><label>Bill name</label><input id="billName" class="input"></div><div><label>Due day</label><input id="billDue" class="input" placeholder="1, 15, 30 or every check"></div><div><label>Default amount</label><input id="billAmount" class="input moneyin" type="number" step=".01"></div><div><label>Recurring</label><select id="billRecurring" class="input"><option value="true">Yes</option><option value="false">No</option></select></div>
 <div><label>Paid from account</label><select id="billAccount" class="input"></select></div>
+<div><label>Subscription?</label><select id="billIsSub" class="input"><option value="auto">Auto-detect</option><option value="yes">Yes</option><option value="no">No</option></select></div>
 <div style="grid-column:1/-1"><label>Merchant aliases (comma separated)</label><input id="billAliases" class="input" placeholder="e.g., VZ WIRELESS, VERIZON"></div>
 </div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveBill()">Save bill</button></div></div></div>
 
@@ -441,7 +487,7 @@ label{display:block;color:var(--muted);font-size:11px;font-weight:700;margin:0 0
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v19'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v21'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -831,13 +877,15 @@ function renderDashboard(){
       } else { $('subsRenewalBanner').style.display='none'; $('subsRenewalBanner').innerHTML=''; }
     }catch(e){console.warn('renewal banner',e)}
   }
+  let _subIdx=null;try{if(typeof subBillIndex==='function')_subIdx=subBillIndex()}catch(e){console.warn('subIdx',e)}
   $('dashBills').innerHTML=s.as.length?s.as.map(a=>{
     let b=state.bills.find(x=>x.id===a.billId)||{name:'Deleted bill',due:''};
+    const isSub=_subIdx?_subIdx.isSub(b,a):false;
     const due=Number(a.amount||0);
     const txn=a.matchedTxnId?state.transactions.find(t=>t.id===a.matchedTxnId):null;
     const actual=txn?Math.abs(Number(txn.amount||0)):(a.paid?due:null);
     const over=actual!==null&&actual>due+0.005;
-    return `<tr><td>${esc(b.name)}</td><td>${esc(b.due)}</td><td class="money">${money(due)}${Number(a.amount)!==Number(b.amount)?'<div class="muted" style="font-size:10px">override</div>':''}</td><td class="money ${over?'bad':''}">${actual===null?'<span class="muted">—</span>':money(actual)}</td><td>${a.paid?'<span class="pill paid">Paid</span>':'<span class="pill unpaid">Not Paid</span>'}</td><td class="right"><button class="btn small" onclick="editAssignment('${a.id}')">Amount</button> <button class="btn small" onclick="togglePaid('${a.id}')">${a.paid?'Undo':'Mark paid'}</button></td></tr>`
+    return `<tr${isSub?' class="subrow"':''}><td>${esc(b.name)}${isSub?'<span class="pill sub">🔁 Sub</span>':''}</td><td>${esc(b.due)}</td><td class="money">${money(due)}${Number(a.amount)!==Number(b.amount)?'<div class="muted" style="font-size:10px">override</div>':''}</td><td class="money ${over?'bad':''}">${actual===null?'<span class="muted">—</span>':money(actual)}</td><td>${a.paid?'<span class="pill paid">Paid</span>':'<span class="pill unpaid">Not Paid</span>'}</td><td class="right"><button class="btn small" onclick="editAssignment('${a.id}')">Amount</button> <button class="btn small" onclick="togglePaid('${a.id}')">${a.paid?'Undo':'Mark paid'}</button></td></tr>`
   }).join(''):`<tr><td colspan="6" class="empty">No bills assigned to this cycle.</td></tr>`;
   $('accountCards').innerHTML=state.accounts.filter(a=>a.include).map(a=>`<div style="display:flex;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--line)"><div><strong>${esc(a.institution)}</strong><div class="muted" style="font-size:12px">${esc(a.name)}</div></div><strong>${money(a.balance)}</strong></div>`).join('');
 }
@@ -852,7 +900,8 @@ function renderCycles(){
   $('cyclesBody').innerHTML=state.cycles.slice().sort((a,b)=>a.date.localeCompare(b.date)).map(c=>{let s=cycleStats(c);return `<tr><td><button class="btn small" onclick="selectCycle('${c.id}');showTab('dashboard')">${fmtDate(c.date)}</button></td><td class="money">${money(c.paycheck)}</td><td class="money">${money(s.planned)}</td><td class="money good">${money(s.paid)}</td><td class="money warn">${money(s.left)}</td><td class="money ${cash-s.left<0?'bad':'good'}">${money(cash-s.left)}</td><td class="right"><button class="btn small danger" onclick="deleteCycle('${c.id}')">Delete</button></td></tr>`}).join('');
 }
 function renderBills(){
-  $('billsBody').innerHTML=state.bills.map(b=>`<tr><td><strong>${esc(b.name)}</strong></td><td>${esc(b.due)}</td><td class="money">${money(b.amount)}</td><td>${b.recurring?'Yes':'No'}</td><td class="muted">${esc(b.aliases||'')}</td><td class="right"><button class="btn small" onclick="editBill('${b.id}')">Edit</button> <button class="btn small danger" onclick="deleteBill('${b.id}')">Delete</button></td></tr>`).join('');
+  let _si=null;try{if(typeof subBillIndex==='function')_si=subBillIndex()}catch(e){}
+  $('billsBody').innerHTML=state.bills.map(b=>{const sub=_si?_si.isSub(b):false;return `<tr${sub?' class="subrow"':''}><td><strong>${esc(b.name)}</strong>${sub?'<span class="pill sub">🔁 Sub</span>':''}</td><td>${esc(b.due)}</td><td class="money">${money(b.amount)}</td><td>${b.recurring?'Yes':'No'}</td><td class="muted">${esc(b.aliases||'')}</td><td class="right"><button class="btn small" onclick="editBill('${b.id}')">Edit</button> <button class="btn small danger" onclick="deleteBill('${b.id}')">Delete</button></td></tr>`}).join('');
 }
 function renderAccounts(){
   $('accountsGrid').innerHTML=state.accounts.map(a=>`<div class="card"><div class="kpi-label">${esc(a.institution)}</div><div style="font-size:18px;font-weight:800;margin-top:5px">${esc(a.name)}</div><div class="kpi-value">${money(a.balance)}</div><div class="kpi-foot">${esc(a.type)} • ${a.include?'Included in cash on hand':'Excluded from cash on hand'}</div><div class="actions" style="margin-top:12px"><button class="btn small" onclick="editAccount('${a.id}')">Edit</button><button class="btn small danger" onclick="deleteAccount('${a.id}')">Delete</button></div></div>`).join('');
@@ -1262,7 +1311,7 @@ function migrate(){
   if(s.payoffBaselineTotal===undefined)s.payoffBaselineTotal=null;
   if(s.payoffBaselineDate===undefined)s.payoffBaselineDate=null;
   state.accounts.forEach(a=>{if(a.match===undefined)a.match='';if(a.deposit===undefined)a.deposit=0});
-  state.bills.forEach(b=>{if(b.accountId===undefined)b.accountId=''});
+  state.bills.forEach(b=>{if(b.accountId===undefined)b.accountId='';if(b.isSub===undefined)b.isSub='auto'});
   if(!state._addedCadillacAsset){
     state.accounts.push({id:uid(),institution:'2022 Cadillac XT5',name:'2.0T Turbo — backs Car Payment (Ally loan)',type:'Investment',balance:23640,include:false,match:'',deposit:0});
     state._addedCadillacAsset=true;
@@ -1523,7 +1572,7 @@ function toggleIgnoreSub(key){
 function showIgnored(){
   const list=state.subOverrides.filter(o=>o.ignored);
   if(!list.length)return alert('Nothing is hidden.');
-  if(confirm(`${list.length} item(s) hidden. Restore all?`)){state.subOverrides=state.subOverrides.filter(o=>!o.ignored);save();renderAll()}
+  if(confirm(`${list.length} item(s) hidden. Restore all?`)){state.subOverrides.forEach(o=>{o.ignored=false});save();renderAll()}
 }
 function subToBill(key){
   const s=detectSubs().find(x=>x.key===key);if(!s)return;
@@ -1533,29 +1582,217 @@ function subToBill(key){
   save();ensureAssignments();renderAll();
   alert(`Added “${s.vendor}” as a bill due day ${day}${acct?` on ${acctLabel(acct)}`:' (no account linked)'}.`);
 }
+/* ---------- subscriptions management (v21) ---------- */
+const SUB_TYPES=['Streaming','Music & Audio','AI & Software','Cloud & Storage','Fitness & Health','Gaming','News & Learning','Shopping & Delivery','Finance','Auto','Other'];
+const SUB_TYPE_RULES=[
+  ['Streaming',['netflix','disney','hulu','max','hbo','paramount','peacock','youtube','sling','crunchyroll','discovery+','flosports','onlyfans']],
+  ['Music & Audio',['spotify','amazon music','tidal','sirius','audible','soundiiz','apple music','pandora']],
+  ['AI & Software',['anthropic','openai','chatgpt','claude','adobe','microsoft','notion','canva','1password']],
+  ['Cloud & Storage',['icloud','dropbox','google one','google storage']],
+  ['Fitness & Health',['oura','peloton','headspace','calm','fitness','gym']],
+  ['Gaming',['xbox','playstation','nintendo','steam']],
+  ['News & Learning',['nytimes','wall street journal','substack','patreon','linkedin','duolingo','medium']],
+  ['Shopping & Delivery',['amazon prime','doordash','instacart','nespresso','uber one','walmart']],
+  ['Finance',['monarch','rocket money']],
+  ['Auto',['onstar','sirius']],
+];
+const SUB_CAT_TYPE={'TV Subscription':'Streaming','Music Subscription':'Music & Audio','Software':'AI & Software','Pc subscription':'AI & Software','Health and Fitness Tracker':'Fitness & Health'};
+const SUB_APR_HIGH=20;
+function subOv(key){let o=state.subOverrides.find(x=>x.key===key);if(!o){o={key,ignored:false};state.subOverrides.push(o)}return o}
+function subOvPeek(key){return state.subOverrides.find(x=>x.key===key)||{}}
+function subAutoType(s){
+  const n=norm(s.vendor);
+  for(const [t,hs] of SUB_TYPE_RULES)if(hs.some(x=>new RegExp('(^|[^a-z])'+x.replace(/[+.]/g,'\\$&')+'([^a-z]|$)').test(n)))return t;
+  return SUB_CAT_TYPE[s.cat]||'Other';
+}
+function subType(s){return subOvPeek(s.key).type||subAutoType(s)}
+function subCardInfo(s){
+  if(!subOnCard(s))return null;
+  let rows=[];try{rows=cardRows()}catch(e){}
+  const n=norm(s.account);
+  const r=rows.find(r=>norm(r.src)===n||norm(r.name)===n)||rows.find(r=>{const a=norm(r.src),b=norm(r.name);return (a&&(n.includes(a)||a.includes(n)))||(b&&(n.includes(b)||b.includes(n)))});
+  return r?{name:r.name,apr:r.apr}:{name:s.account,apr:0};
+}
+function daysUntil(d){return Math.round((new Date(d+'T12:00:00')-new Date(today()+'T12:00:00'))/86400000)}
+// Reasons a subscription needs attention. Each: {lvl:'bad'|'warn'|'good'|'info', text, hideBtn?}
+function subAttention(s,all){
+  const o=subOvPeek(s.key),d=o.decision||'',dOn=o.decidedOn||'',td=today(),out=[];
+  const recurring=s.cadence!=='Multiple/mo';
+  if(d==='cancel'){
+    const after=s.rows.filter(t=>t.date>dOn);
+    if(after.length){const t=after.at(-1);out.push({lvl:'bad',text:`Charged again after you marked Cancel (${fmtDate(dOn).replace(/, \d{4}/,'')}) — ${money(Math.abs(t.amount))} on ${fmtDate(t.date).replace(/, \d{4}/,'')}. Cancellation may not have gone through.`})}
+    else if(recurring&&s.next<td)out.push({lvl:'good',text:`No charge since ${fmtDate(s.last).replace(/, \d{4}/,'')} — looks canceled. Hide it once you're sure.`,hideBtn:true});
+    else out.push({lvl:'info',text:`Cancel pending — watching for the next charge${recurring?` (due ${fmtDate(s.next).replace(/, \d{4}/,'')})`:''}.`});
+    return out;
+  }
+  if(recurring&&s.next<addDays(td,-7))out.push({lvl:'warn',text:`No charge since ${fmtDate(s.last).replace(/, \d{4}/,'')} (expected ${fmtDate(s.next).replace(/, \d{4}/,'')}) — may already be canceled. Confirm, then hide.`,hideBtn:true});
+  if(s.priceUp&&!(d==='keep'&&dOn>=s.last)){
+    const per=s.cadence==='Annual/irregular'?1:12;
+    out.push({lvl:'bad',text:`Price went up: ${money(s.priorAmount)} → ${money(s.amount)} (+${money((s.amount-s.priorAmount)*per)}/yr).`});
+  }
+  if(s.fuzzy)out.push({lvl:'warn',text:'Bundled Apple/PayPal charge — open the breakdown below to see what it really is.'});
+  if(d==='keep')return out;
+  if(d==='review')out.push({lvl:'info',text:`Marked Review on ${fmtDate(dOn).replace(/, \d{4}/,'')}${subOvPeek(s.key).note?` — ${esc(subOvPeek(s.key).note)}`:''}.`});
+  if(s.cadence==='Annual/irregular'){const du=daysUntil(s.next);if(du>=0&&du<=30)out.push({lvl:'warn',text:`Annual renewal in ${du} day${du===1?'':'s'} (${fmtDate(s.next).replace(/, \d{4}/,'')}) — ${money(s.amount)} at once. Decide before it renews.`})}
+  if(s.rows[0].date>=addDays(td,-60))out.push({lvl:'info',text:`New — first charged ${fmtDate(s.rows[0].date).replace(/, \d{4}/,'')}. Still worth it after the trial?`});
+  const ci=subCardInfo(s);
+  if(ci&&ci.apr>=SUB_APR_HIGH)out.push({lvl:'warn',text:`On ${esc(ci.name)} at ${ci.apr}% APR — about ${money(s.monthly*12*ci.apr/100/2)}/yr extra in interest if that card carries a balance. Consider moving it to a low-APR card or checking.`});
+  const dup=(all||[]).filter(x=>x.key!==s.key&&norm(x.vendor)===norm(s.vendor));
+  if(dup.length)out.push({lvl:'warn',text:`Also charged on ${dup.map(x=>esc(x.account)).join(', ')} — possible duplicate.`});
+  return out;
+}
+const LVL_RANK={bad:0,warn:1,good:2,info:3};
+function setSubDecision(key,d){const o=subOv(key);if(o.decision===d){o.decision='';o.decidedOn=''}else{o.decision=d;o.decidedOn=today()}save();renderAll()}
+function decPill(d){return d==='keep'?'<span class="pill paid">Keep</span>':d==='review'?'<span class="pill mid">Review</span>':d==='cancel'?'<span class="pill high">Cancel</span>':'<span class="muted" style="font-size:12px">—</span>'}
+function decButtons(key){const d=subOvPeek(key).decision||'';return ['keep','review','cancel'].map(x=>`<button class="btn small${d===x?' on':''}" onclick="setSubDecision('${key}','${x}')">${x[0].toUpperCase()+x.slice(1)}</button>`).join('')}
+function openSubModal(key){
+  const s=detectSubs().find(x=>x.key===key);if(!s)return;const o=subOvPeek(key),ci=subCardInfo(s);
+  $('subModalKey').value=key;$('subModalTitle').textContent=s.vendor;
+  $('subModalDec').value=o.decision||'';$('subModalNote').value=o.note||'';
+  $('subModalType').innerHTML=SUB_TYPES.map(t=>`<option ${t===subType(s)?'selected':''}>${t}</option>`).join('');
+  $('subModalFacts').innerHTML=`${money(s.amount)} ${s.cadence.toLowerCase()} • ${money(s.monthly*12)}/yr • ${s.rows.length} charges since ${fmtDate(s.rows[0].date)}<br>Charged to ${esc(s.account)}${ci&&ci.apr?` (${ci.apr}% APR)`:''} • last ${fmtDate(s.last)}${o.decidedOn?` • decided ${fmtDate(o.decidedOn)}`:''}`;
+  openModal('subModal');
+}
+function saveSubModal(){
+  const s=detectSubs().find(x=>x.key===$('subModalKey').value),o=subOv($('subModalKey').value),d=$('subModalDec').value;
+  if(d!==(o.decision||'')){o.decision=d;o.decidedOn=d?today():''}
+  const t=$('subModalType').value;o.type=(s&&t===subAutoType(s))?'':t;
+  o.note=$('subModalNote').value.trim();
+  save();closeModal('subModal');renderAll();
+}
+function filterSubType(t){if($('subFilterType')){$('subFilterType').value=$('subFilterType').value===t?'':t;renderSubs()}}
+function nextLabel(s){
+  if(s.cadence==='Multiple/mo')return '<span class="muted">several / mo</span>';
+  const du=daysUntil(s.next),dt=fmtDate(s.next).replace(/, \d{4}/,'');
+  if(du<0)return `${dt}<div class="${du<-7?'bad':'warn'}" style="font-size:10px">${-du}d overdue</div>`;
+  return `${dt}<div class="muted" style="font-size:10px">${du===0?'today':`in ${du}d`}</div>`;
+}
 function renderSubs(){
   if(!$('subsBody'))return;
   const subs=detectSubs();
   const monthly=subs.reduce((s,x)=>s+x.monthly,0);
   $('sMonthly').textContent=money(monthly);
-  $('sAnnual').textContent=money(monthly*12);
+  $('sAnnual').textContent=money(monthly*12)+'/yr';
   $('sCount').textContent=String(subs.length);
+  const decided=subs.filter(s=>subOvPeek(s.key).decision).length;
+  if($('sDecided'))$('sDecided').textContent=`${decided} of ${subs.length} decided`;
   const fuzzy=subs.filter(s=>s.fuzzy).length;
   $('sFuzzy').textContent=String(fuzzy);
   $('sFuzzy').className='kpi-value '+(fuzzy?'warn':'good');
-  $('subsBody').innerHTML=subs.length?subs.map(s=>{
-    const acct=acctForTxnName(s.account);
-    const onCard=acct?!acct.include:/card|credit|platinum|quicksilver|discover|skymiles|blue cash|amex/i.test(s.account);
+  // high-APR
+  const hi=subs.map(s=>({s,ci:subCardInfo(s)})).filter(x=>x.ci&&x.ci.apr>=SUB_APR_HIGH);
+  if($('sApr')){const m=hi.reduce((a,x)=>a+x.s.monthly,0);$('sApr').textContent=money(m);$('sApr').className='kpi-value '+(m>0?'warn':'good');
+    $('sAprFoot').textContent=hi.length?`${hi.length} service${hi.length===1?'':'s'} at ${SUB_APR_HIGH}%+ APR`:`per month at ${SUB_APR_HIGH}%+ APR`}
+  // attention queue
+  const attn=subs.map(s=>({s,r:subAttention(s,subs)})).filter(x=>x.r.length)
+    .map(x=>({...x,rank:Math.min(...x.r.map(r=>LVL_RANK[r.lvl]))}))
+    .sort((a,b)=>a.rank-b.rank||b.s.monthly-a.s.monthly);
+  const urgent=attn.filter(x=>x.rank<=1).length;
+  if($('sAttn')){$('sAttn').textContent=String(attn.length);$('sAttn').className='kpi-value '+(urgent?'bad':attn.length?'warn':'good')}
+  if($('subsAttn'))$('subsAttn').innerHTML=attn.length?attn.map(({s,r})=>`<div class="attn">
+      <div style="flex:1;min-width:220px"><strong>${esc(s.vendor)}</strong> <span class="muted" style="font-size:12px">${money(s.monthly)}/mo • ${esc(s.account)}</span> ${subOvPeek(s.key).decision?decPill(subOvPeek(s.key).decision):''}
+        ${r.map(x=>`<div class="why"><span class="dot ${x.lvl}"></span>${x.text}</div>`).join('')}</div>
+      <div class="acts">${decButtons(s.key)}${r.some(x=>x.hideBtn)?`<button class="btn small" onclick="toggleIgnoreSub('${s.key}')">Hide</button>`:''}<button class="btn small" onclick="openSubModal('${s.key}')">Manage</button></div>
+    </div>`).join(''):'<div class="note">Nothing needs attention right now. 🎉</div>';
+  // by type
+  const byType={};subs.forEach(s=>{const t=subType(s);(byType[t]=byType[t]||{t,n:0,m:0,names:[]});byType[t].n++;byType[t].m+=s.monthly;byType[t].names.push(s.vendor)});
+  const types=Object.values(byType).sort((a,b)=>b.m-a.m),maxM=Math.max(1,...types.map(x=>x.m));
+  const curType=$('subFilterType')?$('subFilterType').value:'';
+  if($('subsTypes'))$('subsTypes').innerHTML=types.length?types.map(x=>`<div class="typerow" style="${curType===x.t?'outline:1px solid var(--accent);border-radius:8px;':''}" onclick="filterSubType('${x.t}')">
+      <div style="display:flex;justify-content:space-between;gap:10px;font-size:13px"><span><strong>${x.t}</strong> <span class="muted">· ${x.n}</span>${x.n>=3&&x.t!=='Other'?' <span class="pill mid">possible overlap</span>':''}</span><strong>${money(x.m)}/mo</strong></div>
+      <div class="bar" style="margin:5px 0 3px"><span style="width:${(x.m/maxM*100).toFixed(1)}%"></span></div>
+      <div class="muted" style="font-size:11px">${x.names.map(esc).join(', ')}</div></div>`).join(''):'<div class="muted">No subscriptions detected yet.</div>';
+  if($('subFilterType')){$('subFilterType').innerHTML='<option value="">All types</option>'+types.map(x=>`<option ${x.t===curType?'selected':''}>${x.t}</option>`).join('')}
+  // table
+  const sortBy=$('subSort')?$('subSort').value:'cost',fDec=$('subFilterDec')?$('subFilterDec').value:'';
+  let list=subs.filter(s=>{const d=subOvPeek(s.key).decision||'';if(fDec==='none'?d:(fDec&&d!==fDec))return false;if(curType&&subType(s)!==curType)return false;return true});
+  const nextKey=s=>s.cadence==='Multiple/mo'?'9999':s.next;
+  if(sortBy==='next')list.sort((a,b)=>nextKey(a).localeCompare(nextKey(b)));
+  else if(sortBy==='name')list.sort((a,b)=>a.vendor.localeCompare(b.vendor));
+  else if(sortBy==='type')list.sort((a,b)=>SUB_TYPES.indexOf(subType(a))-SUB_TYPES.indexOf(subType(b))||b.monthly-a.monthly);
+  const row=s=>{
+    const ci=subCardInfo(s),o=subOvPeek(s.key);
+    const chg=ci?`<div class="${ci.apr>=SUB_APR_HIGH?'bad':'muted'}" style="font-size:11px">on a card${ci.apr?` • ${ci.apr}% APR`:''}</div>`:'';
     return `<tr>
-      <td><strong>${esc(s.vendor)}</strong>${s.fuzzy?' <span class="pill unpaid">needs review</span>':''}${s.via?`<div class="muted" style="font-size:11px">billed via ${esc(s.via)}</div>`:''}</td>
-      <td>${esc(s.account)}${onCard?'<div class="muted" style="font-size:11px">on a card, not cash</div>':''}</td>
+      <td><strong>${esc(s.vendor)}</strong>${s.fuzzy?' <span class="pill unpaid">needs review</span>':''}${s.via?`<div class="muted" style="font-size:11px">billed via ${esc(s.via)}</div>`:''}${o.note?`<div class="muted" style="font-size:11px">📝 ${esc(o.note)}</div>`:''}</td>
+      <td style="font-size:12px">${subType(s)}</td>
+      <td>${esc(s.account)}${chg}</td>
       <td class="money ${s.priceUp?'bad':''}">${money(s.amount)}${s.priceUp?`<div class="muted" style="font-size:10px">was ${money(s.priorAmount)}</div>`:''}</td>
       <td>${esc(s.cadence)}</td>
-      <td class="money">${money(s.monthly)}</td>
-      <td class="money">${money(s.monthly*12)}</td>
-      <td>${fmtDate(s.last).replace(/, \d{4}/,'')}</td>
-      <td class="right"><button class="btn small" onclick="subToBill('${s.key}')">→ Bill</button> <button class="btn small danger" onclick="toggleIgnoreSub('${s.key}')">Hide</button></td>
-    </tr>`}).join(''):'<tr><td colspan="8" class="empty">Import transactions to detect subscriptions.</td></tr>';
+      <td class="money">${money(s.monthly)}<div class="muted" style="font-size:10px">${money(s.monthly*12)}/yr</div></td>
+      <td>${nextLabel(s)}</td>
+      <td>${decPill(o.decision)}</td>
+      <td class="right" style="white-space:nowrap"><button class="btn small" onclick="openSubModal('${s.key}')">Manage</button> <button class="btn small" onclick="subToBill('${s.key}')">→ Bill</button> <button class="btn small danger" onclick="toggleIgnoreSub('${s.key}')">Hide</button></td>
+    </tr>`};
+  let html='';
+  if(!subs.length)html='<tr><td colspan="9" class="empty">Import transactions to detect subscriptions.</td></tr>';
+  else if(!list.length)html='<tr><td colspan="9" class="empty">No subscriptions match these filters.</td></tr>';
+  else if(sortBy==='type'){let cur=null;list.forEach(s=>{const t=subType(s);if(t!==cur){cur=t;const g=byType[t];html+=`<tr class="grouphead"><td colspan="5">${t} · ${g.n}</td><td class="money">${money(g.m)}</td><td colspan="3"></td></tr>`}html+=row(s)})}
+  else html=list.map(row).join('');
+  $('subsBody').innerHTML=html;
+}
+
+/* ---------- subscriptions ↔ pay cycle (v20) ---------- */
+function subOnCard(s){const acct=acctForTxnName(s.account);return acct?!acct.include:/card|credit|platinum|quicksilver|discover|skymiles|blue cash|amex/i.test(s.account)}
+// Which Bills are subscriptions: manual Yes/No wins; otherwise a bill counts if its name/alias exactly
+// equals a detected subscription vendor, or if any of its matched transactions belongs to a detected subscription.
+function subBillIndex(subs){
+  subs=subs||detectSubs();
+  const vendors=new Set(subs.map(s=>norm(s.vendor))),txnIds=new Set(),txnToSub={};
+  subs.forEach(s=>s.rows.forEach(t=>{txnIds.add(t.id);txnToSub[t.id]=s}));
+  const byBillTxn={};state.assignments.forEach(a=>{if(a.matchedTxnId&&txnIds.has(a.matchedTxnId))byBillTxn[a.billId]=true});
+  const nameHit=b=>vendors.has(norm(b.name))||String(b.aliases||'').split(',').map(norm).some(x=>x&&vendors.has(x));
+  function isSub(b,a){
+    if(!b)return false;if(b.isSub==='yes')return true;if(b.isSub==='no')return false;
+    if(a&&a.matchedTxnId&&txnIds.has(a.matchedTxnId))return true;
+    return nameHit(b)||!!byBillTxn[b.id];
+  }
+  function billForSub(s){
+    const ids=new Set(s.rows.map(t=>t.id));
+    return state.bills.find(b=>b.isSub!=='no'&&(vendors.has(norm(b.name))&&norm(b.name)===norm(s.vendor)||String(b.aliases||'').split(',').map(norm).includes(norm(s.vendor))))
+      ||state.bills.find(b=>state.assignments.some(a=>a.billId===b.id&&a.matchedTxnId&&ids.has(a.matchedTxnId)))||null;
+  }
+  return {isSub,billForSub,subs};
+}
+function cycleWindow(c){const nc=nextCycle(c.date);return{start:c.date,end:nc?nc.date:addDays(c.date,14)}}
+function subsInCycle(c,subs){
+  subs=subs||detectSubs();const w=cycleWindow(c),out=[],td=today();
+  const days=Math.max(1,Math.round((new Date(w.end+'T12:00:00')-new Date(w.start+'T12:00:00'))/86400000));
+  subs.forEach(s=>{
+    const hit=s.rows.filter(t=>t.date>=w.start&&t.date<w.end);
+    const paid=hit.reduce((x,t)=>x+Math.abs(Number(t.amount)),0);
+    if(s.cadence==='Multiple/mo'){
+      const est=s.monthly*days/30.4;
+      out.push({s,status:'ongoing',date:hit.length?hit.at(-1).date:w.start,amount:Math.max(paid,est),charged:paid});
+    }else if(hit.length){
+      out.push({s,status:'charged',date:hit.at(-1).date,amount:paid,charged:paid});
+    }else if(s.next>=w.start&&s.next<w.end){
+      out.push({s,status:s.next<td?'late':'upcoming',date:s.next,amount:s.amount,charged:0});
+    }
+  });
+  return out.sort((a,b)=>a.date.localeCompare(b.date));
+}
+function renderCycleSubs(){
+  const card=$('cycleSubsCard');if(!card)return;
+  const c=currentCycle();if(!c||!state.transactions.length){card.style.display='none';return}
+  const subs=detectSubs(),idx=subBillIndex(subs),list=subsInCycle(c,subs),w=cycleWindow(c);
+  card.style.display='';
+  const cs=state.assignments.filter(a=>a.cycleId===c.id);
+  let total=0,charged=0,upcoming=0,uncounted=0,uncountedN=0;
+  const rows=list.map(r=>{
+    const s=r.s,card_=subOnCard(s),bill=idx.billForSub(s),inCycle=bill&&cs.some(a=>a.billId===bill.id);
+    total+=r.amount;charged+=r.charged;upcoming+=Math.max(0,r.amount-r.charged);
+    if(!card_&&!inCycle&&r.status!=='charged'){uncounted+=Math.max(0,r.amount-r.charged);uncountedN++}
+    const st={charged:'<span class="pill paid">Charged</span>',upcoming:'<span class="pill unpaid">Upcoming</span>',
+      late:'<span class="pill alert">Expected — not seen</span>',ongoing:'<span class="pill match">Ongoing</span>'}[r.status];
+    const tag=inCycle?'<div class="muted" style="font-size:10px">in this cycle\'s bills</div>':(card_?'<div class="muted" style="font-size:10px">on a card</div>':'<div class="warn" style="font-size:10px">cash • not a Bill</div>');
+    return `<tr><td><strong>${esc(s.vendor)}</strong>${s.priceUp?' <span class="pill alert">price ↑</span>':''}</td><td>${r.status==='ongoing'?'several':fmtDate(r.date).replace(/, \d{4}/,'')}</td><td class="money">${r.status==='ongoing'?'~':''}${money(r.amount)}</td><td>${esc(s.account)}${tag}</td><td>${st}</td></tr>`;
+  });
+  $('cycleSubsWindow').textContent=`${fmtDate(w.start)} → ${fmtDate(addDays(w.end,-1))} • ${list.length} subscription${list.length===1?'':'s'}`;
+  $('csTotal').textContent=money(total);$('csCharged').textContent=money(charged);$('csUpcoming').textContent=money(upcoming);
+  $('csUncounted').textContent=money(uncounted);$('csUncounted').className='v '+(uncounted>0?'warn':'good');
+  $('cycleSubsNote').innerHTML=uncounted>0?`<div class="alertrow warn"><div><strong>${uncountedN} upcoming subscription${uncountedN===1?'':'s'} (${money(uncounted)}) will come out of cash but ${uncountedN===1?"isn't a Bill":"aren't Bills"}</strong><div class="muted" style="font-size:12px">Safe to spend doesn't hold money back for these. Use “→ Bill” on the Subscriptions tab to include them.</div></div></div>`:'';
+  $('cycleSubsBody').innerHTML=rows.length?rows.join(''):'<tr><td colspan="5" class="empty">No subscriptions expected this pay period.</td></tr>';
 }
 
 /* ---------- account + bill modal additions ---------- */
@@ -1578,13 +1815,13 @@ function saveSettings2(){
 /* ---------- overrides ---------- */
 const _openBillModal=openBillModal,_editBill=editBill,_saveBill=saveBill,_openAccountModal=openAccountModal,_editAccount=editAccount,_saveAccount=saveAccount,_renderAll=renderAll,_renderAccounts=renderAccounts;
 
-openBillModal=function(){_openBillModal();fillBillAccountSelect('')};
-editBill=function(id){_editBill(id);const b=state.bills.find(x=>x.id===id);fillBillAccountSelect(b?b.accountId:'')};
+openBillModal=function(){_openBillModal();fillBillAccountSelect('');if($('billIsSub'))$('billIsSub').value='auto'};
+editBill=function(id){_editBill(id);const b=state.bills.find(x=>x.id===id);fillBillAccountSelect(b?b.accountId:'');if($('billIsSub'))$('billIsSub').value=(b&&b.isSub)||'auto'};
 saveBill=function(){
   const editing=$('billEditId').value,acct=$('billAccount')?$('billAccount').value:'';
   _saveBill();
   const b=editing?state.bills.find(x=>x.id===editing):state.bills.at(-1);
-  if(b){b.accountId=acct;save();renderAll()}
+  if(b){b.accountId=acct;b.isSub=$('billIsSub')?$('billIsSub').value:'auto';save();renderAll()}
 };
 openAccountModal=function(){_openAccountModal();if($('acctMatch')){$('acctMatch').value='';$('acctDeposit').value='0';fillAcctMatchList()}};
 editAccount=function(id){_editAccount(id);const a=acctById(id);if($('acctMatch')&&a){$('acctMatch').value=a.match||'';$('acctDeposit').value=Number(a.deposit||0);fillAcctMatchList()}};
@@ -1612,6 +1849,7 @@ renderAll=function(){
   try{_renderAll()}catch(e){console.warn('core',e)}
   try{renderFunding()}catch(e){console.warn('funding',e)}
   try{renderSubs()}catch(e){console.warn('subs',e)}
+  try{renderCycleSubs()}catch(e){console.warn('cycleSubs',e)}
   try{renderInvest()}catch(e){console.warn('invest',e)}
   try{renderCards2()}catch(e){console.warn('cards2',e)}
   try{renderPayoffDashboard()}catch(e){console.warn('payoff',e)}
