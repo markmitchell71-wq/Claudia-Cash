@@ -417,6 +417,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
       <div class="card" style="margin-top:14px"><h2>Account &amp; Sync</h2><div id="acctSyncBody"></div></div>
       <div class="grid two" style="margin-top:14px">
         <div class="card"><h2>Monthly card payments</h2><div class="note" style="margin-bottom:12px">Once a month, set each credit card bill to what you actually paid on it the month before. You review every change first; unpaid amounts in this and future pay cycles follow along.</div><div id="ccRollSettings"></div></div>
+        <div class="card"><h2>PayPal</h2><div class="note" style="margin-bottom:12px">Monarch records most PayPal purchases twice — on your PayPal account and again on the bank account or card PayPal charged. The app keeps the bank/card copy (that's where the money actually left) and skips the PayPal copy in subscriptions, spending, budgets and bill matching. Skipped rows still appear on the Transactions tab, labeled.</div><div id="ppMirrorBody"></div></div>
         <div class="card"><h2>Automatic backups</h2><div class="note" style="margin-bottom:12px">A full copy of your data is saved on this device right before every CSV import. The last 3 are kept. Download one to keep it, or restore it to undo an import.</div><div class="actions" style="margin-bottom:10px"><button class="btn" onclick="backupNow()">Back up now</button></div><div id="snapBody" style="overflow:auto"></div></div>
       </div>
       <div class="card" style="margin-top:14px"><h2>Merchant renames</h2><div class="note" style="margin-bottom:12px">Monarch sometimes shows a merchant under a name you don't recognize. Renames apply to every matching transaction now and on every future import. Bill matching still recognizes the original name.</div><div style="overflow:auto"><table><thead><tr><th>When the merchant contains</th><th>Show it as</th><th></th></tr></thead><tbody id="renameBody"></tbody></table></div><div class="actions" style="margin-top:10px"><button class="btn primary" onclick="saveRenames()">Save &amp; apply to all transactions</button></div></div>
@@ -512,7 +513,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v22'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v23'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -937,10 +938,10 @@ function renderTransactions(){
   if($('txnAccountFilter')) $('txnAccountFilter').innerHTML='<option value="">All accounts</option>'+accts.map(x=>`<option ${x===af?'selected':''}>${esc(x)}</option>`).join('');
   if($('txnCategoryFilter')) $('txnCategoryFilter').innerHTML='<option value="">All categories</option>'+cats.map(x=>`<option ${x===cf?'selected':''}>${esc(x)}</option>`).join('');
   let rows=state.transactions.filter(t=>(!q||`${t.merchant} ${t.category} ${t.account}`.toLowerCase().includes(q))&&(!m||monthKey(t.date)===m)&&(!af||t.account===af)&&(!cf||t.category===cf)).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,500);
-  $('txnBody').innerHTML=rows.length?rows.map(t=>{let a=state.assignments.find(a=>a.matchedTxnId===t.id),b=a&&state.bills.find(b=>b.id===a.billId);return `<tr><td>${fmtDate(t.date)}</td><td>${esc(t.merchant)}</td><td>${esc(t.category)}</td><td>${esc(t.account)}</td><td class="money">${money(t.amount)}</td><td>${b?`<span class="pill match">${esc(b.name)}</span>`:'<span class="muted">Unmatched</span>'}</td><td class="right"><button class="btn small" onclick="openManualMatch('${t.id}')">${b?'Change':'Match'}</button></td></tr>`}).join(''):`<tr><td colspan="7" class="empty">No transactions loaded yet.</td></tr>`;
+  $('txnBody').innerHTML=rows.length?rows.map(t=>{let a=state.assignments.find(a=>a.matchedTxnId===t.id),b=a&&state.bills.find(b=>b.id===a.billId);return `<tr><td>${fmtDate(t.date)}</td><td>${esc(t.merchant)}</td><td>${esc(t.category)}</td><td>${esc(t.account)}${typeof isMirrorTxn==='function'&&isMirrorTxn(t)?`<div class="muted" style="font-size:10px">PayPal copy · not counted${mirrorOf(t)?' (see '+esc(mirrorOf(t).account)+' '+shortDate(mirrorOf(t).date)+')':''}</div>`:''}</td><td class="money">${money(t.amount)}</td><td>${b?`<span class="pill match">${esc(b.name)}</span>`:'<span class="muted">Unmatched</span>'}</td><td class="right"><button class="btn small" onclick="openManualMatch('${t.id}')">${b?'Change':'Match'}</button></td></tr>`}).join(''):`<tr><td colspan="7" class="empty">No transactions loaded yet.</td></tr>`;
 }
 function renderHistory(){
-  let spend={};state.transactions.forEach(t=>{let a=Number(t.amount||0);if(a<0)spend[monthKey(t.date)]=(spend[monthKey(t.date)]||0)+Math.abs(a)});
+  let spend={};state.transactions.forEach(t=>{let a=Number(t.amount||0);if(a<0&&!(typeof isMirrorTxn==='function'&&isMirrorTxn(t)))spend[monthKey(t.date)]=(spend[monthKey(t.date)]||0)+Math.abs(a)});
   let months=Object.entries(spend).sort((a,b)=>a[0].localeCompare(b[0])).slice(-12), max=Math.max(1,...months.map(x=>x[1]));
   $('monthlyBars').innerHTML=months.length?months.map(([k,v])=>`<div class="barrow"><span>${new Date(k+'-01T12:00:00').toLocaleDateString('en-US',{month:'short',year:'numeric'})}</span><div class="bar"><span style="width:${v/max*100}%"></span></div><strong class="right">${money(v)}</strong></div>`).join(''):`<div class="empty">Import Monarch history to see monthly spending.</div>`;
   const curKey=monthKey(today());
@@ -949,7 +950,7 @@ function renderHistory(){
   const monthLabel=k=>new Date(k+'-01T12:00:00').toLocaleDateString('en-US',{month:'long',year:'numeric'});
   function topCatsFor(mKey){
     let cats={};
-    state.transactions.forEach(t=>{const a=Number(t.amount||0);if(a<0&&monthKey(t.date)===mKey)cats[t.category||'Uncategorized']=(cats[t.category||'Uncategorized']||0)+Math.abs(a)});
+    state.transactions.forEach(t=>{const a=Number(t.amount||0);if(a<0&&monthKey(t.date)===mKey&&!(typeof isMirrorTxn==='function'&&isMirrorTxn(t)))cats[t.category||'Uncategorized']=(cats[t.category||'Uncategorized']||0)+Math.abs(a)});
     return Object.entries(cats).sort((a,b)=>b[1]-a[1]).slice(0,10);
   }
   function renderCatList(elId,mKey){
@@ -988,7 +989,7 @@ function subscriptionTxnIds(){
 }
 function discretionaryTxns(){
   const billIds=billMatchedTxnIds(), subIds=subscriptionTxnIds();
-  return state.transactions.filter(t=>Number(t.amount||0)<0 && !billIds.has(t.id) && !subIds.has(t.id));
+  return state.transactions.filter(t=>Number(t.amount||0)<0 && !billIds.has(t.id) && !subIds.has(t.id) && !(typeof isMirrorTxn==='function'&&isMirrorTxn(t)));
 }
 function categorySpendFor(cat,mKey,txns){
   return (txns||discretionaryTxns()).filter(t=>monthKey(t.date)===mKey && (t.category||'Uncategorized')===cat).reduce((s,t)=>s+Math.abs(Number(t.amount||0)),0);
@@ -1244,7 +1245,7 @@ function runMatching(){
     let b=state.bills.find(x=>x.id===a.billId), c=state.cycles.find(x=>x.id===a.cycleId);if(!b||!c)continue;
     let aliases=[b.name,...String(b.aliases||'').split(',')].map(x=>x.trim().toLowerCase()).filter(Boolean);
     let next=nextCycle(c.date), start=addDays(c.date,-win), end=addDays(next?next.date:addDays(c.date,14),win);
-    let candidates=state.transactions.filter(t=>t.date>=start&&t.date<=end&&!usedTxnIds.has(t.id));
+    let candidates=state.transactions.filter(t=>t.date>=start&&t.date<=end&&!usedTxnIds.has(t.id)&&!(typeof isMirrorTxn==='function'&&isMirrorTxn(t)));
     let best=null,bestScore=-1;
     for(let t of candidates){
       let m=t.merchant.toLowerCase(), m0=String(t.origMerchant||'').toLowerCase(), exactAlias=aliases.some(x=>m===x||(m0&&m0===x)), nameHit=aliases.some(x=>m.includes(x)||x.includes(m)||(m0&&(m0.includes(x)||x.includes(m0)))), amt=Math.abs(Number(t.amount||0)), diff=Math.abs(amt-Number(a.amount||0));
@@ -1556,7 +1557,7 @@ function resolveVendor(t){
 }
 function detectSubs(all){
   const since=daysAgo(210),groups={};
-  state.transactions.filter(t=>t.date>=since&&Number(t.amount)<0).forEach(t=>{
+  state.transactions.filter(t=>t.date>=since&&Number(t.amount)<0&&!isMirrorTxn(t)).forEach(t=>{
     const r=resolveVendor(t);r.vendor=canonical(r.vendor);const key=norm(r.vendor)+'|'+norm(t.account);
     (groups[key]=groups[key]||{key,vendor:r.vendor,via:r.via,fuzzy:r.fuzzy,account:t.account,cat:t.category,rows:[]}).rows.push(t);
   });
@@ -3062,6 +3063,78 @@ renderAll=function(){
 };
 const _v22BootWithState=bootWithState;
 bootWithState=function(s){state=normalizeState(s);migrateV22();_v22BootWithState(state)};
+
+/* ---------- v23: PayPal double entries ----------
+   Monarch records most PayPal purchases twice: on the PayPal account ("Payment to Spotify") and again on the
+   bank account or card PayPal pulled the money from ("PAYPAL DES:PURCHASE ID:SPOTIFY…"), usually 0–4 days later.
+   The bank/card copy is where the money actually left, so the PayPal-account copy is treated as a duplicate and
+   left out of subscriptions, monthly spending, budgets and bill matching. PayPal purchases with no bank/card twin
+   (paid from your PayPal balance) still count. Pending "Authorization to …" holds that are followed by the
+   actual "Payment to …" are skipped too. */
+const isPayPalAcct=a=>/paypal/i.test(a||'');
+let _ppMirrorCache={key:'',ids:new Set(),pairs:new Map()};
+function paypalMirrorIds(){
+  const tx=state.transactions||[];
+  const off=state.settings&&state.settings.paypalMirrors===false;
+  const key=tx.length+'|'+(tx.length?tx[0].id+tx[tx.length-1].id:'')+'|'+(off?'off':'on');
+  if(_ppMirrorCache.key===key)return _ppMirrorCache.ids;
+  const ids=new Set(),pairs=new Map();
+  if(!off){
+    const pp=tx.filter(t=>isPayPalAcct(t.account)&&Number(t.amount)<0).sort((a,b)=>a.date.localeCompare(b.date));
+    // 1. pending authorizations later replaced by the real payment
+    const pays=pp.filter(t=>/^payment to/i.test(t.statement||''));
+    const usedPay=new Set();
+    pp.filter(t=>/^authorization to/i.test(t.statement||'')).forEach(t=>{
+      const p=pays.find(p=>!usedPay.has(p.id)&&Math.abs(Number(p.amount)-Number(t.amount))<0.005&&daysBetween(t.date,p.date)>=0&&daysBetween(t.date,p.date)<=7);
+      if(p){usedPay.add(p.id);ids.add(t.id);pairs.set(t.id,p)}
+    });
+    // 2. PayPal-account copy of a bank/card charge
+    const byAmt=new Map();
+    tx.forEach(t=>{
+      if(isPayPalAcct(t.account)||Number(t.amount)>=0)return;
+      if(!/paypal/i.test((t.statement||'')+' '+(t.merchant||'')+' '+(t.origMerchant||'')+' '+(t.notes||'')))return;
+      if(/ach hold/i.test(t.statement||''))return;
+      const k=Math.abs(Number(t.amount)).toFixed(2);if(!byAmt.has(k))byAmt.set(k,[]);byAmt.get(k).push(t);
+    });
+    const used=new Set();
+    pp.forEach(t=>{
+      if(ids.has(t.id))return;
+      const list=byAmt.get(Math.abs(Number(t.amount)).toFixed(2));if(!list)return;
+      let best=null,bd=99;
+      for(const o of list){if(used.has(o.id))continue;const d=daysBetween(t.date,o.date);if(d<-2||d>10)continue;if(Math.abs(d)<bd){bd=Math.abs(d);best=o}}
+      if(best){used.add(best.id);ids.add(t.id);pairs.set(t.id,best)}
+    });
+  }
+  _ppMirrorCache={key,ids,pairs};
+  return ids;
+}
+function isMirrorTxn(t){return !!t&&paypalMirrorIds().has(t.id)}
+function mirrorOf(t){paypalMirrorIds();return _ppMirrorCache.pairs.get(t.id)}
+function renderPayPalCard(){
+  const el=$('ppMirrorBody');if(!el)return;
+  const on=state.settings.paypalMirrors!==false;
+  const ids=paypalMirrorIds();
+  const ppAll=state.transactions.filter(t=>isPayPalAcct(t.account)&&Number(t.amount)<0);
+  const amt=ppAll.filter(t=>ids.has(t.id)).reduce((s,t)=>s+Math.abs(Number(t.amount)),0);
+  el.innerHTML=`<div class="formgrid"><div><label>PayPal double entries</label><select id="ppMirrorSel" class="input" onchange="state.settings.paypalMirrors=this.value==='on';save();renderAll()"><option value="on" ${on?'selected':''}>Skip the PayPal copy (recommended)</option><option value="off" ${on?'':'selected'}>Count both copies</option></select></div></div>
+  <div class="sub" style="margin-top:10px">${on?`${ids.size.toLocaleString()} of ${ppAll.length.toLocaleString()} PayPal-account purchases (${money(amt)}) have a matching bank or card charge and are being skipped. The other ${(ppAll.length-ids.size).toLocaleString()} have no twin (paid from your PayPal balance, or the bank charge hasn't posted yet) and still count.`:'Both copies are counted, so PayPal purchases show up twice in subscriptions and spending.'}</div>`;
+}
+// Use Monarch's clean merchant name from the PayPal copy for the bank/card side (e.g. XANDRIEUSAD → Qobuz USA)
+const _v23ResolveVendor=resolveVendor;
+resolveVendor=function(t){
+  const r=_v23ResolveVendor(t);
+  try{
+    if(r.via==='PayPal'&&!r.fuzzy&&!isPayPalAcct(t.account)){
+      paypalMirrorIds();
+      if(!_ppMirrorCache.rev){_ppMirrorCache.rev=new Map();_ppMirrorCache.pairs.forEach((o,ppId)=>{const pt=state.transactions.find(x=>x.id===ppId);if(pt&&o&&!isPayPalAcct(o.account))_ppMirrorCache.rev.set(o.id,pt)})}
+      const pt=_ppMirrorCache.rev.get(t.id);
+      if(pt&&pt.merchant&&!/paypal|apple/i.test(pt.merchant))return {...r,vendor:cleanVendor(pt.merchant)};
+    }
+  }catch(e){}
+  return r;
+};
+const _v23RenderAll=renderAll;
+renderAll=function(){_v23RenderAll();try{renderPayPalCard()}catch(e){console.warn('paypal',e)}};
 
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
