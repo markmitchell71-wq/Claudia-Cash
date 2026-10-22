@@ -1,10 +1,28 @@
-# Claudia Cash — v23
+# Claudia Cash — v24
 
 A personal safe-to-spend budget that answers one question: **what can I safely spend until next payday?** It runs as a single-file web app (PWA) on GitHub Pages, installs to the iPhone home screen, and is fed by CSV exports from Monarch.
 
 Your data is cached on the device (IndexedDB) and, when you sign in with Google, synced to your Supabase project so the phone and the Mac see the same budget.
 
 ---
+
+## What's new in v24
+
+### Apple subscriptions
+Apple bills App Store subscriptions in bundles — one Apple Card charge, or one bank "APPLE.COM BILL" charge through PayPal, can cover four apps. v24 uses your **Apple receipt emails** to split those bundles into the real apps.
+
+- **Subscriptions → Apple subscriptions** lists every App Store subscription: price, plan, what pays for it, last charge, renewal date, total spent, and Keep / Review / Cancel.
+- Comes loaded with your 58 receipts since March 31. 54 match a charge exactly; the rest are newer than your last import.
+- Bundled Apple charges now show as the real apps in the subscriptions table, on Home and in Needs attention. Tax is assigned to the streaming items that are actually taxed (HBO Max, Peacock, Hulu, rentals).
+- **Transactions** shows what's inside each Apple charge, e.g. *X $4.00 · ChatGPT $19.99*.
+- Alerts: weekly plans and what they've cost, back-to-back double charges (refund candidates), two plans of the same app at once, price changes, yearly renewals within 30 days, and new subscriptions.
+- **Stopped or canceled**, **One-time purchases** and **Unmatched** (Apple charges with no receipt, e.g. Apple Store purchases) sit underneath.
+- Apple Cash transfers and Apple Card interest are no longer mistaken for an Apple subscription.
+
+**Adding receipts**
+- **Add receipt:** open a "Your receipt from Apple." email, select all, copy, paste. The app reads the date, order, apps, plans, renewal dates, tax and payment method; fix any name before saving and it remembers it.
+- **Import file / Export:** a JSON list of receipts. Ask Claude to pull new receipts from Gmail into a file, then import it. Re-importing the same receipt updates it instead of duplicating it.
+- **Manage on Apple ↗** opens Apple's subscription page to actually cancel.
 
 ## What's new in v23
 
@@ -59,7 +77,7 @@ Monarch records most PayPal purchases twice: once on the **PayPal** account ("Pa
 | **Dashboard** | Cash on hand, this cycle's bills, paid / left, and **Safe to spend** until next payday. Bills for the cycle, cash accounts, subscriptions this pay period, and alert banners. |
 | **Accounts** | Checking, savings and other accounts. Only accounts marked *Include in cash on hand* count toward Safe to spend. |
 | **Funding & Transfers** | Which account pays each bill, what each account needs this cycle, and the transfers to make, and by when. |
-| **Subscriptions** | Recurring services detected from your history, decisions (Keep / Review / Cancel), Needs attention queue, types and overlap. |
+| **Subscriptions** | Recurring services detected from your history, decisions (Keep / Review / Cancel), Needs attention queue, types and overlap, and Apple subscriptions itemized from receipts. |
 | **Budgeting** | Monthly targets for discretionary categories, with suggestions from your last 6 months. |
 | **Credit Cards** | Balances, limits, utilization, interest and payments per card. |
 | **Payoff Planner** | Priority ranking, balance by month, payoff plan builder, strategy comparison and plan log. |
@@ -76,6 +94,9 @@ Monarch records most PayPal purchases twice: once on the **PayPal** account ("Pa
 2. In the app: **Import Transactions**, then **Import balances**. A backup is taken automatically before each.
 3. Check the Home banners: transfers, price increases, renewals.
 
+**When new Apple receipts arrive (or monthly):**
+1. **Subscriptions → Apple subscriptions → Add receipt** and paste each receipt, or import a receipts file.
+
 **Once a month (first few days):**
 1. Tap **Review** on the *update your card payments* banner.
 2. Check the amounts, then **Update checked bills**.
@@ -87,9 +108,9 @@ Monarch records most PayPal purchases twice: once on the **PayPal** account ("Pa
 
 ## Publishing an update
 
-1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V23`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
+1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V24`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
 2. Commit and push.
-3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v23`), so the new build replaces the old one cleanly.
+3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v24`), so the new build replaces the old one cleanly.
 
 On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen**.
 
@@ -107,6 +128,7 @@ On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen
 
 | Version | Date | Highlights |
 |---|---|---|
+| v24 | Oct 22, 2026 | Apple subscriptions from receipt emails; bundled Apple charges split into real apps |
 | v23 | Oct 22, 2026 | PayPal double entries skipped; clean PayPal merchant names |
 | v22 | Oct 22, 2026 | Monthly card-payment update, hover details, last charge, richer Needs attention, price/stale banners, merchant renames, balance by month, automatic backups |
 | v21 | Oct 15, 2026 | Subscriptions management: types, decisions, Needs attention, review of bundled Apple/PayPal charges |

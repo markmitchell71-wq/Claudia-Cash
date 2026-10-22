@@ -154,6 +154,9 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 .attnfacts b{color:var(--text);font-weight:700}
 .attnhist{font-size:11px;color:var(--muted);margin-top:4px}
 @media(max-width:700px){.grid.kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+#appleCard details summary{padding:4px 0}
+#appleCard .kpi-value{font-size:22px}
+#apPreview .input{min-width:90px}
 </style>
 </head>
 <body>
@@ -307,6 +310,11 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
         <h2>By type</h2><div class="sub">Tap a type to filter the table. Three or more in one type is flagged as possible overlap.</div>
         <div id="subsTypes" style="margin-top:10px"></div>
       </div>
+      <div class="card" id="appleCard" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2> Apple subscriptions</h2><div class="sub">From your Apple receipt emails. Each receipt is matched to the Apple Card or bank charge it explains, so bundled App Store charges show up as the real apps everywhere in the app.</div></div>
+        <div class="actions"><button class="btn primary" onclick="openAppleAdd()">Add receipt</button><button class="btn" onclick="document.getElementById('apFile').click()">Import file</button><input id="apFile" type="file" accept=".json,application/json" style="display:none" onchange="importAppleFile(event)"><button class="btn" onclick="exportAppleFile()">Export</button><a class="btn" style="text-decoration:none" href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener">Manage on Apple ↗</a></div></div>
+        <div id="appleBody"></div>
+      </div>
       <div class="card" style="overflow:auto">
         <div class="subtools">
           <div><label>Sort</label><select id="subSort" class="input" onchange="renderSubs()"><option value="cost">Cost (high → low)</option><option value="next">Next charge</option><option value="last">Last charge (newest)</option><option value="name">Name</option><option value="type">Type (grouped)</option></select></div>
@@ -315,7 +323,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
         </div>
         <table><thead><tr><th>Service</th><th>Type</th><th>Charged to</th><th class="money">Amount</th><th>Cadence</th><th class="money">Per month</th><th>Last charge</th><th>Next charge</th><th>Decision</th><th></th></tr></thead><tbody id="subsBody"></tbody></table></div>
       <div id="subsReview"></div>
-      <div class="note" style="margin-top:14px">PayPal charges are resolved to the real vendor from the statement descriptor. Charges that read APPLE.COM BILL are an App Store bundle and cannot be split from bank data — check Settings → your name → Subscriptions on your iPhone to itemize those.</div>
+      <div class="note" style="margin-top:14px">PayPal charges are resolved to the real vendor from the statement descriptor. App Store charges (Apple Card, or APPLE.COM BILL through PayPal) are split into individual apps using your Apple receipts — see Apple subscriptions above. Charges without a receipt stay as one bundled row.</div>
     </section>
 
     <section id="budgeting" class="section">
@@ -468,6 +476,13 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <div style="overflow:auto;margin-top:12px"><table><thead><tr><th></th><th>Card bill</th><th class="money">Now</th><th>Paid that month</th><th class="money">New amount</th></tr></thead><tbody id="ccRollBody"></tbody></table></div>
 <div class="actions" style="margin-top:16px"><button class="btn primary" onclick="applyCcRoll()">Update checked bills</button><button class="btn" onclick="closeModal('ccRollModal')">Cancel</button></div></div></div>
 
+<div id="appleAddModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Add an Apple receipt</h2><button class="btn small" onclick="closeModal('appleAddModal')">Close</button></div>
+<div class="note">Open a <strong>“Your receipt from Apple.”</strong> email, select all of it, copy, and paste it here. Works with the email on your phone or computer.</div>
+<textarea id="apPaste" class="input" style="width:100%;min-height:150px;margin-top:10px;font-family:inherit" placeholder="Paste the receipt email here"></textarea>
+<div class="actions" style="margin-top:10px"><button class="btn" onclick="apParseNow()">Read receipt</button></div>
+<div id="apPreview"></div>
+<div class="actions" style="margin-top:14px"><button id="apSaveBtn" class="btn primary" style="display:none" onclick="apSaveDraft()">Save receipt</button><button class="btn" onclick="closeModal('appleAddModal')">Cancel</button></div></div></div>
+
 <div id="kpiModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="kpiModalTitle">Detail</h2><button class="btn small" onclick="closeModal('kpiModal')">Close</button></div><div id="kpiModalBody"></div></div></div>
 
 <div id="authGate" class="authgate">
@@ -513,7 +528,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v23'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v24'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -938,7 +953,7 @@ function renderTransactions(){
   if($('txnAccountFilter')) $('txnAccountFilter').innerHTML='<option value="">All accounts</option>'+accts.map(x=>`<option ${x===af?'selected':''}>${esc(x)}</option>`).join('');
   if($('txnCategoryFilter')) $('txnCategoryFilter').innerHTML='<option value="">All categories</option>'+cats.map(x=>`<option ${x===cf?'selected':''}>${esc(x)}</option>`).join('');
   let rows=state.transactions.filter(t=>(!q||`${t.merchant} ${t.category} ${t.account}`.toLowerCase().includes(q))&&(!m||monthKey(t.date)===m)&&(!af||t.account===af)&&(!cf||t.category===cf)).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,500);
-  $('txnBody').innerHTML=rows.length?rows.map(t=>{let a=state.assignments.find(a=>a.matchedTxnId===t.id),b=a&&state.bills.find(b=>b.id===a.billId);return `<tr><td>${fmtDate(t.date)}</td><td>${esc(t.merchant)}</td><td>${esc(t.category)}</td><td>${esc(t.account)}${typeof isMirrorTxn==='function'&&isMirrorTxn(t)?`<div class="muted" style="font-size:10px">PayPal copy · not counted${mirrorOf(t)?' (see '+esc(mirrorOf(t).account)+' '+shortDate(mirrorOf(t).date)+')':''}</div>`:''}</td><td class="money">${money(t.amount)}</td><td>${b?`<span class="pill match">${esc(b.name)}</span>`:'<span class="muted">Unmatched</span>'}</td><td class="right"><button class="btn small" onclick="openManualMatch('${t.id}')">${b?'Change':'Match'}</button></td></tr>`}).join(''):`<tr><td colspan="7" class="empty">No transactions loaded yet.</td></tr>`;
+  $('txnBody').innerHTML=rows.length?rows.map(t=>{let a=state.assignments.find(a=>a.matchedTxnId===t.id),b=a&&state.bills.find(b=>b.id===a.billId);return `<tr><td>${fmtDate(t.date)}</td><td>${esc(t.merchant)}${typeof appleTxnNote==='function'?appleTxnNote(t):''}</td><td>${esc(t.category)}</td><td>${esc(t.account)}${typeof isMirrorTxn==='function'&&isMirrorTxn(t)?`<div class="muted" style="font-size:10px">PayPal copy · not counted${mirrorOf(t)?' (see '+esc(mirrorOf(t).account)+' '+shortDate(mirrorOf(t).date)+')':''}</div>`:''}</td><td class="money">${money(t.amount)}</td><td>${b?`<span class="pill match">${esc(b.name)}</span>`:'<span class="muted">Unmatched</span>'}</td><td class="right"><button class="btn small" onclick="openManualMatch('${t.id}')">${b?'Change':'Match'}</button></td></tr>`}).join(''):`<tr><td colspan="7" class="empty">No transactions loaded yet.</td></tr>`;
 }
 function renderHistory(){
   let spend={};state.transactions.forEach(t=>{let a=Number(t.amount||0);if(a<0&&!(typeof isMirrorTxn==='function'&&isMirrorTxn(t)))spend[monthKey(t.date)]=(spend[monthKey(t.date)]||0)+Math.abs(a)});
@@ -1557,9 +1572,10 @@ function resolveVendor(t){
 }
 function detectSubs(all){
   const since=daysAgo(210),groups={};
-  state.transactions.filter(t=>t.date>=since&&Number(t.amount)<0&&!isMirrorTxn(t)).forEach(t=>{
-    const r=resolveVendor(t);r.vendor=canonical(r.vendor);const key=norm(r.vendor)+'|'+norm(t.account);
-    (groups[key]=groups[key]||{key,vendor:r.vendor,via:r.via,fuzzy:r.fuzzy,account:t.account,cat:t.category,rows:[]}).rows.push(t);
+  (typeof appleExpandRows==='function'?appleExpandRows:(x=>x))(state.transactions.filter(t=>t.date>=since&&Number(t.amount)<0&&!isMirrorTxn(t))).forEach(t=>{
+    const ap=t._ap;const r=ap?{vendor:ap.n,via:'Apple',fuzzy:false}:resolveVendor(t);if(!ap)r.vendor=canonical(r.vendor);const key=ap?apKey(ap.n):norm(r.vendor)+'|'+norm(t.account);
+    const g=(groups[key]=groups[key]||{key,vendor:r.vendor,via:r.via,fuzzy:r.fuzzy,account:t.account,cat:t.category,rows:[]});g.rows.push(t);
+    if(ap){g.apple=true;g.apOnce=ap.c==='o';if(t.date>=(g._ld||'')){g._ld=t.date;g.account=t.account;g.apLast=ap}}
   });
   const out=[];
   Object.values(groups).forEach(g=>{
@@ -1568,15 +1584,15 @@ function detectSubs(all){
     const spread=med?median(amts.map(a=>Math.abs(a-med)))/med:1;
     const catHit=SUB_CATS.includes(g.cat),nameHit=SUB_HINTS.some(h=>norm(g.vendor).includes(h));
     const isPayment=/card payment|payment$|transfer$/i.test(g.vendor);
-    const blocked=isPayment||(NOT_SUB_CATS.includes(g.cat)&&!catHit&&!nameHit);
+    const blocked=isPayment||(!g.apple&&NOT_SUB_CATS.includes(g.cat)&&!catHit&&!nameHit);
     const exact=Math.max(...Object.values(amts.reduce((m,a)=>{const k=a.toFixed(2);m[k]=(m[k]||0)+1;return m},{})));
     const steady=spread<=0.05||exact>=3;
-    const looksSub=(catHit||nameHit)?(months>=2):(months>=3&&steady&&g.rows.length<=months*1.4);
+    const looksSub=g.apple?(!g.apOnce&&!apStopped(g.apLast)&&(months>=2||!!(g.apLast&&g.apLast.rn>=addDays(today(),-3)))):(catHit||nameHit)?(months>=2):(months>=3&&steady&&g.rows.length<=months*1.4);
     if(!all&&(blocked||!looksSub))return;
-    if(all&&months<3)return;
+    if(all&&months<3&&!(g.apple&&looksSub))return;
     g.rows.sort((a,b)=>a.date.localeCompare(b.date));
     const per=g.rows.length/Math.max(1,months);
-    const cadence=months>=3&&g.rows.length<=months*0.5?'Annual/irregular':(per>1.6?'Multiple/mo':'Monthly');
+    const cadence=g.apple&&g.apLast?({y:'Annual/irregular',w:'Multiple/mo'}[g.apLast.c]||'Monthly'):months>=3&&g.rows.length<=months*0.5?'Annual/irregular':(per>1.6?'Multiple/mo':'Monthly');
     const lastD=g.rows.at(-1).date;
     const ov=state.subOverrides.find(o=>o.key===g.key)||{};
     const recentAmt=Math.abs(g.rows.at(-1).amount);
@@ -1585,8 +1601,8 @@ function detectSubs(all){
     const priceUp=priorAmts.length>=1&&recentAmt>priorMed*1.03&&Math.abs(recentAmt-priorMed)>=1;
     const curAmt=priceUp?recentAmt:med;
     out.push({...g,amount:curAmt,priorAmount:priorMed,priceUp,months,cadence,last:lastD,
-      next:addDays(lastD,cadence==='Annual/irregular'?365:30),
-      monthly:cadence==='Multiple/mo'?curAmt*per:(cadence==='Annual/irregular'?curAmt/12:curAmt),
+      next:(g.apLast&&g.apLast.rn)||addDays(lastD,cadence==='Annual/irregular'?365:30),
+      monthly:g.apple&&g.apLast&&g.apLast.c==='w'?curAmt*52/12:cadence==='Multiple/mo'?curAmt*per:(cadence==='Annual/irregular'?curAmt/12:curAmt),
       ignored:!!ov.ignored,catHit,nameHit});
   });
   return out.filter(s=>!s.ignored).sort((a,b)=>b.monthly-a.monthly);
@@ -3135,6 +3151,324 @@ resolveVendor=function(t){
 };
 const _v23RenderAll=renderAll;
 renderAll=function(){_v23RenderAll();try{renderPayPalCard()}catch(e){console.warn('paypal',e)}};
+
+
+/* ================= v24: Apple subscriptions from receipts ================= */
+// Receipts come from Apple's "Your receipt from Apple." emails. Each one is matched to the
+// Apple Card charge or the bank "APPLE.COM BILL" charge it explains, and the bundled charge
+// is split into its real subscriptions everywhere in the app.
+const APPLE_SEED=[{"id":"MKBB27V4D1","date":"2026-10-20","pay":"Apple Card","total":22.51,"tax":0.53,"items":[{"n":"Privateers: Pirate Wars","p":"Chest of Gems","c":"o","a":17.99},{"n":"Movie rental","p":"Bram Stoker's Dracula","c":"o","a":3.99}],"src":"gmail"},{"id":"MKBB2L0B8Q","date":"2026-10-19","pay":"Apple Card","total":9.99,"tax":0.0,"items":[{"n":"iCloud+","p":"2 TB","c":"m","a":9.99,"r":"2026-11-19"}],"src":"gmail"},{"id":"MKBB1QDMVV","date":"2026-10-10","pay":"Apple Card","total":12.99,"tax":0.0,"items":[{"n":"Apple News+","p":"Monthly","c":"m","a":12.99,"r":"2026-11-10"}],"src":"gmail"},{"id":"MKBB0X1F7H","date":"2026-10-04","pay":"Apple Card","total":58.01,"tax":3.03,"items":[{"n":"Spark Mail","p":"Spark Plus","c":"m","a":10.0,"r":"2026-11-01"},{"n":"HBO Max","p":"Premium","c":"m","a":22.99,"r":"2026-11-02"},{"n":"Widgetsmith","p":"Premium","c":"m","a":1.99,"r":"2026-11-03"},{"n":"Vimeo","p":"Starter","c":"m","a":20.0,"r":"2026-11-04"}],"src":"gmail"},{"id":"MKBB0VX792","date":"2026-10-01","pay":"Apple Card","total":16.99,"tax":0.0,"items":[{"n":"Jack'd","p":"Pro","c":"m","a":16.99,"r":"2026-11-01"}],"src":"gmail"},{"id":"MKBB0N10Q9","date":"2026-09-30","pay":"Apple Card","total":23.99,"tax":0.0,"items":[{"n":"X","p":"Premium Basic","c":"m","a":4.0,"r":"2026-10-29"},{"n":"ChatGPT","p":"Plus","c":"m","a":19.99,"r":"2026-10-30"}],"src":"gmail"},{"id":"MKBB0H7F1W","date":"2026-09-29","pay":"PayPal","total":4.99,"tax":0.0,"items":[{"n":"Rummy 500","p":"VIP Plus","c":"m","a":4.99,"r":"2026-10-27"}],"src":"gmail"},{"id":"MKBB0DW16D","date":"2026-09-26","pay":"PayPal","total":22.62,"tax":2.63,"items":[{"n":"Apple TV + Peacock","p":"Premium Plus","c":"m","a":19.99,"r":"2026-10-26"}],"src":"gmail"},{"id":"MKB9ZYG5TH","date":"2026-09-25","pay":"PayPal","total":54.97,"tax":0.0,"items":[{"n":"Privateers: Pirate Wars","p":"No Ads","c":"o","a":3.99},{"n":"Snapchat","p":"Lens+","c":"m","a":5.99,"r":"2026-10-23"},{"n":"Grindr","p":"Unlimited","c":"m","a":44.99,"r":"2026-10-25"}],"src":"gmail"},{"id":"MKB9ZSNMBG","date":"2026-09-19","pay":"PayPal","total":9.99,"tax":0.0,"items":[{"n":"iCloud+","p":"2 TB","c":"m","a":9.99}],"src":"gmail"},{"id":"MKB9YX3NNK","date":"2026-09-10","pay":"PayPal","total":12.99,"tax":0.0,"items":[{"n":"Apple News+","p":"Monthly","c":"m","a":12.99}],"src":"gmail"},{"id":"MKB9Y1LH52","date":"2026-09-08","pay":"PayPal","total":50.0,"tax":3.03,"items":[{"n":"Spark Mail","p":"Spark Plus","c":"m","a":10.0,"r":"2026-10-01"},{"n":"HBO Max","p":"Premium","c":"m","a":22.99,"r":"2026-10-02"},{"n":"Widgetsmith","p":"Premium","c":"m","a":1.99,"r":"2026-10-03"},{"n":"Goodnotes","p":"Essential","c":"y","a":11.99,"r":"2027-09-08"}],"src":"gmail"},{"id":"MKB9XZKNZ2","date":"2026-09-01","pay":"PayPal","total":36.98,"tax":0.0,"items":[{"n":"ChatGPT","p":"Plus","c":"m","a":19.99,"r":"2026-09-30"},{"n":"Jack'd","p":"Pro","c":"m","a":16.99}],"src":"gmail"},{"id":"MKB9XSM16S","date":"2026-08-30","pay":"PayPal","total":58.98,"tax":0.0,"items":[{"n":"GROWLR","p":"Pro","c":"m","a":14.99,"r":"2026-09-29"},{"n":"X","p":"Premium Basic","c":"m","a":4.0,"r":"2026-09-29"},{"n":"Elevate","p":"Premium","c":"y","a":39.99,"r":"2027-08-31"}],"src":"gmail"},{"id":"MKB9XBWX3T","date":"2026-08-27","pay":"PayPal","total":49.98,"tax":0.0,"items":[{"n":"Grindr","p":"Unlimited","c":"m","a":44.99,"r":"2026-09-25"},{"n":"Rummy 500","p":"VIP Plus","c":"m","a":4.99}],"src":"gmail"},{"id":"MKB9XH8WG2","date":"2026-08-26","pay":"PayPal","total":22.62,"tax":2.63,"items":[{"n":"Apple TV + Peacock","p":"Premium Plus","c":"m","a":19.99}],"src":"gmail"},{"id":"MKB9X4D31F","date":"2026-08-24","pay":"PayPal","total":37.99,"tax":0.0,"items":[{"n":"Weather Kitty","p":"Meow Prime","c":"y","a":19.99,"r":"2027-08-22"},{"n":"Canva","p":"Pro","c":"m","a":18.0,"r":"2026-09-22"}],"src":"gmail"},{"id":"MKB9WW18S2","date":"2026-08-22","pay":"PayPal","total":4.99,"tax":0.0,"items":[{"n":"Gecko Out","p":"Fail offer","c":"o","a":4.99}],"src":"gmail"},{"id":"MKB9WW73XZ","date":"2026-08-19","pay":"PayPal","total":9.99,"tax":0.0,"items":[{"n":"iCloud+","p":"2 TB","c":"m","a":9.99}],"src":"gmail"},{"id":"MKB9V7SBTJ","date":"2026-08-11","pay":"Apple Card","total":38.01,"tax":3.03,"items":[{"n":"Spark Mail","p":"Spark Plus","c":"m","a":10.0,"r":"2026-09-01"},{"n":"HBO Max","p":"Premium","c":"m","a":22.99,"r":"2026-09-02"},{"n":"Widgetsmith","p":"Premium","c":"m","a":1.99,"r":"2026-09-03"}],"src":"gmail"},{"id":"MKB9W2M1DD","date":"2026-08-10","pay":"Apple Card","total":12.99,"tax":0.0,"items":[{"n":"Apple News+","p":"Monthly","c":"m","a":12.99}],"src":"gmail"},{"id":"MKB9V5T8TY","date":"2026-08-01","pay":"Apple Card","total":36.98,"tax":0.0,"items":[{"n":"ChatGPT","p":"Plus","c":"m","a":19.99,"r":"2026-08-31"},{"n":"Jack'd","p":"Pro","c":"m","a":16.99}],"src":"gmail"},{"id":"MKB9TWL3DS","date":"2026-07-29","pay":"PayPal","total":48.96,"tax":0.0,"items":[{"n":"Rummy 500","p":"VIP Plus","c":"m","a":4.99,"r":"2026-08-27"},{"n":"GROWLR","p":"Pro","c":"m","a":14.99,"r":"2026-08-29"},{"n":"X","p":"Premium Basic","c":"m","a":4.0,"r":"2026-08-29"},{"n":"Weather Channel","p":"Legacy Annual","c":"y","a":9.99,"r":"2027-07-29"},{"n":"Kudos","p":"Premium","c":"m","a":14.99,"r":"2026-08-29"}],"src":"gmail"},{"id":"MKB9TSSX6L","date":"2026-07-26","pay":"Apple Card","total":22.62,"tax":2.63,"items":[{"n":"Apple TV + Peacock","p":"Premium Plus","c":"m","a":19.99}],"src":"gmail"},{"id":"MKB9TKJ337","date":"2026-07-25","pay":"Apple Card","total":52.98,"tax":0.0,"items":[{"n":"Noteshelf","p":"Weekly Premium","c":"w","a":7.99,"r":"2026-07-31"},{"n":"Grindr","p":"Unlimited","c":"m","a":44.99,"r":"2026-08-25"}],"src":"gmail"},{"id":"MKB9T1W2VV","date":"2026-07-24","pay":"Apple Card","total":7.99,"tax":0.0,"items":[{"n":"Noteshelf","p":"Weekly Premium","c":"w","a":7.99,"r":"2026-07-24"}],"src":"gmail"},{"id":"MKB9T6SQ95","date":"2026-07-19","pay":"Apple Card","total":9.99,"tax":0.0,"items":[{"n":"iCloud+","p":"2 TB","c":"m","a":9.99}],"src":"gmail"},{"id":"MKB9SG6TFX","date":"2026-07-10","pay":"Apple Card","total":12.99,"tax":0.0,"items":[{"n":"Apple News+","p":"Monthly","c":"m","a":12.99}],"src":"gmail"},{"id":"MKB9SB4146","date":"2026-07-10","pay":"PayPal","total":24.98,"tax":0.0,"items":[{"n":"Echo AI Note Taker","p":"Echo Plus","c":"m","a":16.99,"r":"2026-08-09"},{"n":"Noteshelf","p":"Weekly Premium","c":"w","a":7.99,"r":"2026-07-17"}],"src":"gmail"},{"id":"MKB9QM5V6K","date":"2026-07-09","pay":"PayPal","total":46.0,"tax":3.03,"items":[{"n":"Spark Mail","p":"Spark Plus","c":"m","a":10.0,"r":"2026-08-01"},{"n":"HBO Max","p":"Premium","c":"m","a":22.99,"r":"2026-08-02"},{"n":"Widgetsmith","p":"Premium","c":"m","a":1.99,"r":"2026-08-03"},{"n":"Noteshelf","p":"Weekly Premium","c":"w","a":7.99,"r":"2026-07-10"}],"src":"gmail"},{"id":"MKB9QL32QH","date":"2026-07-01","pay":"Apple Card","total":16.99,"tax":0.0,"items":[{"n":"Jack'd","p":"Pro","c":"m","a":16.99}],"src":"gmail"},{"id":"MKB9QF28S8","date":"2026-06-30","pay":"Apple Card","total":38.98,"tax":0.0,"items":[{"n":"GROWLR","p":"Pro","c":"m","a":14.99,"r":"2026-07-29"},{"n":"X","p":"Premium Basic","c":"m","a":4.0,"r":"2026-07-29"},{"n":"ChatGPT","p":"Plus","c":"m","a":19.99,"r":"2026-07-31"}],"src":"gmail"},{"id":"MKB9Q68DSZ","date":"2026-06-26","pay":"PayPal","total":22.62,"tax":2.63,"items":[{"n":"Apple TV + Peacock","p":"Premium Plus","c":"m","a":19.99}],"src":"gmail"},{"id":"MKB9Q37D2L","date":"2026-06-25","pay":"PayPal","total":44.99,"tax":0.0,"items":[{"n":"Grindr","p":"Unlimited","c":"m","a":44.99,"r":"2026-07-25"}],"src":"gmail"},{"id":"MKB9N6M9YZ","date":"2026-06-24","pay":"PayPal","total":19.98,"tax":0.0,"items":[{"n":"RadarScope","p":"Pro Tier 1","c":"y","a":9.99,"r":"2027-06-15"},{"n":"Dance AI","p":"Weekly Premium","c":"w","a":9.99,"r":"2026-06-26"}],"src":"gmail"},{"id":"MKB9NKX885","date":"2026-06-19","pay":"PayPal","total":9.99,"tax":0.0,"items":[{"n":"iCloud+","p":"2 TB","c":"m","a":9.99}],"src":"gmail"},{"id":"MKB9MXJTV0","date":"2026-06-15","pay":"Apple Card","total":39.98,"tax":0.0,"items":[{"n":"Dance AI","p":"Weekly Premium","c":"w","a":9.99,"r":"2026-06-19"},{"n":"Perplexity","p":"Pro","c":"m","a":20.0,"r":"2026-07-12"},{"n":"RadarScope","p":"App purchase","c":"o","a":9.99}],"src":"gmail"},{"id":"MKB9MQGH17","date":"2026-06-10","pay":"PayPal","total":12.99,"tax":0.0,"items":[{"n":"Apple News+","p":"Monthly","c":"m","a":12.99}],"src":"gmail"},{"id":"MKB9MNS5GZ","date":"2026-06-10","pay":"Apple Card","total":1.99,"tax":0.0,"items":[{"n":"Picture Bird","p":"Premium","c":"m","a":1.99,"r":"2026-07-10"}],"src":"gmail"},{"id":"MKB9M0KNFW","date":"2026-06-09","pay":"Apple Card","total":41.97,"tax":0.0,"items":[{"n":"Widgetsmith","p":"Premium","c":"m","a":1.99,"r":"2026-07-03"},{"n":"Copilot Money","p":"Monthly","c":"m","a":13.0,"r":"2026-07-05"},{"n":"Dance AI","p":"Weekly Premium","c":"w","a":9.99,"r":"2026-06-12"},{"n":"Echo AI Note Taker","p":"Echo Plus","c":"m","a":16.99,"r":"2026-07-09"}],"src":"gmail"},{"id":"MKB9LYHF0X","date":"2026-06-02","pay":"Apple Card","total":57.0,"tax":3.03,"items":[{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-06-09"},{"n":"HBO Max","p":"Premium","c":"m","a":22.99,"r":"2026-07-02"},{"n":"Grindr","p":"XTRA","c":"m","a":22.99,"r":"2026-07-03"}],"src":"gmail"},{"id":"MKB9LKKJG7","date":"2026-05-31","pay":"Apple Card","total":50.97,"tax":0.0,"items":[{"n":"Dance AI","p":"Weekly Premium","c":"w","a":9.99,"r":"2026-06-05"},{"n":"X","p":"Premium Basic","c":"m","a":4.0,"r":"2026-06-29"},{"n":"ChatGPT","p":"Plus","c":"m","a":19.99,"r":"2026-06-30"},{"n":"Jack'd","p":"Pro","c":"m","a":16.99,"r":"2026-07-01"}],"src":"gmail"},{"id":"MKB9L7SKF6","date":"2026-05-29","pay":"Apple Card","total":37.97,"tax":0.0,"items":[{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-06-02"},{"n":"Daddyhunt","p":"Premium","c":"m","a":14.99,"r":"2026-06-28"},{"n":"GROWLR","p":"Pro","c":"m","a":14.99,"r":"2026-06-29"}],"src":"gmail"},{"id":"MKB9L8N017","date":"2026-05-26","pay":"Apple Card","total":22.62,"tax":2.63,"items":[{"n":"Apple TV + Peacock","p":"Premium Plus","c":"m","a":19.99}],"src":"gmail"},{"id":"MKB9K0X28Z","date":"2026-05-22","pay":"Apple Card","total":58.54,"tax":1.58,"items":[{"n":"Perplexity","p":"Pro","c":"m","a":20.0,"r":"2026-06-12"},{"n":"Dance AI","p":"Weekly Premium","c":"w","a":6.99,"r":"2026-05-22"},{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-05-26"},{"n":"Dance AI","p":"Weekly Premium","c":"w","a":9.99,"r":"2026-05-29"},{"n":"Hulu","p":"Monthly","c":"m","a":11.99,"r":"2026-06-22"}],"src":"gmail"},{"id":"MKB9KM63ZB","date":"2026-05-19","pay":"Apple Card","total":9.99,"tax":0.0,"items":[{"n":"iCloud+","p":"2 TB","c":"m","a":9.99}],"src":"gmail"},{"id":"MKB9J31GTX","date":"2026-05-12","pay":"Apple Card","total":50.97,"tax":0.0,"items":[{"n":"Widgetsmith","p":"Premium","c":"m","a":1.99,"r":"2026-06-03"},{"n":"Spark Mail","p":"Spark Pro","c":"m","a":20.0,"r":"2026-06-05"},{"n":"Copilot Money","p":"Monthly","c":"m","a":13.0,"r":"2026-06-05"},{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-05-12"},{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-05-19"}],"src":"gmail"},{"id":"MKB9J2SBXD","date":"2026-05-02","pay":"Apple Card","total":44.99,"tax":0.0,"items":[{"n":"Grindr","p":"Unlimited","c":"m","a":44.99,"r":"2026-06-03"}],"src":"gmail"},{"id":"MKB9HVQ8MJ","date":"2026-05-02","pay":"Apple Card","total":63.0,"tax":3.03,"items":[{"n":"ChatGPT","p":"Plus","c":"m","a":19.99,"r":"2026-05-31"},{"n":"Jack'd","p":"Pro","c":"m","a":16.99,"r":"2026-06-01"},{"n":"HBO Max","p":"Premium","c":"m","a":22.99,"r":"2026-06-02"}],"src":"gmail"},{"id":"MKB9HKM5Q5","date":"2026-04-29","pay":"Apple Card","total":34.97,"tax":0.0,"items":[{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-05-05"},{"n":"GROWLR","p":"Pro","c":"m","a":14.99,"r":"2026-05-29"},{"n":"X","p":"Premium Basic","c":"m","a":4.0,"r":"2026-05-29"},{"n":"Gecko Out","p":"Coin Pack 2","c":"o","a":7.99}],"src":"gmail"},{"id":"MKB9H1N8WG","date":"2026-04-27","pay":"Apple Card","total":18.09,"tax":2.11,"items":[{"n":"Hulu","p":"Monthly","c":"m","a":11.99,"r":"2026-05-22"},{"n":"Movie rental","p":"Blade Runner 2049","c":"o","a":3.99}],"src":"gmail"},{"id":"MKB9HFFVDJ","date":"2026-04-26","pay":"Apple Card","total":22.62,"tax":2.63,"items":[{"n":"Apple TV + Peacock","p":"Premium Plus","c":"m","a":19.99,"r":"2026-05-26"}],"src":"gmail"},{"id":"MKB9G7NFKV","date":"2026-04-21","pay":"Apple Card","total":15.98,"tax":0.0,"items":[{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-04-21"},{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-04-28"}],"src":"gmail"},{"id":"MKB9GSW92M","date":"2026-04-19","pay":"Apple Card","total":9.99,"tax":0.0,"items":[{"n":"iCloud+","p":"2 TB","c":"m","a":9.99,"r":"2026-05-19"}],"src":"gmail"},{"id":"MKB9FDM8Q5","date":"2026-04-07","pay":"Apple Card","total":46.98,"tax":0.0,"items":[{"n":"Spark Mail","p":"Spark Pro","c":"m","a":20.0,"r":"2026-05-05"},{"n":"Copilot Money","p":"Monthly","c":"m","a":13.0,"r":"2026-05-05"},{"n":"Monument Valley 3","p":"Unlock full game","c":"o","a":5.99},{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-04-14"}],"src":"gmail"},{"id":"MKB9F6DD5K","date":"2026-04-03","pay":"Apple Card","total":46.98,"tax":0.0,"items":[{"n":"Widgetsmith","p":"Premium","c":"m","a":1.99,"r":"2026-05-03"},{"n":"Grindr","p":"Unlimited","c":"m","a":44.99,"r":"2026-05-03"}],"src":"gmail"},{"id":"MKB9F0BVT6","date":"2026-04-02","pay":"Apple Card","total":43.01,"tax":3.03,"items":[{"n":"Jack'd","p":"Pro","c":"m","a":16.99,"r":"2026-05-01"},{"n":"HBO Max","p":"Premium","c":"m","a":22.99,"r":"2026-05-02"}],"src":"gmail"},{"id":"MKB9DSGW5B","date":"2026-03-31","pay":"Apple Card","total":46.97,"tax":0.0,"items":[{"n":"GROWLR","p":"Pro","c":"m","a":14.99,"r":"2026-04-29"},{"n":"X","p":"Premium Basic","c":"m","a":4.0,"r":"2026-04-29"},{"n":"Echo AI Note Taker","p":"Echo Plus weekly trial","c":"w","a":7.99,"r":"2026-04-07"},{"n":"ChatGPT","p":"Plus","c":"m","a":19.99,"r":"2026-04-30"}],"src":"gmail"}];
+const APPLE_MANAGE_URL='https://apps.apple.com/account/subscriptions';
+const AP_CAD={m:'Monthly',y:'Yearly',w:'Weekly',o:'One-time'};
+const AP_TAXED=/hbo|peacock|apple tv|hulu|rental|movie|netflix|paramount|disney\+|starz|showtime/i;
+
+function addMonthsISO(s,n){const [y,m,d]=s.split('-').map(Number);const last=new Date(y,m-1+n+1,0,12).getDate();const t=new Date(y,m-1+n,Math.min(d,last),12);return t.getFullYear()+'-'+String(t.getMonth()+1).padStart(2,'0')+'-'+String(t.getDate()).padStart(2,'0')}
+function apKey(name){return 'apple:'+norm(name)}
+// a plan whose renewal date passed with no newer receipt has been canceled
+function apStopped(ap){const R=state.appleReceipts||[];if(!ap||!ap.rn||!R.length)return false;return ap.rn<addDays(R[0].date,-2)&&ap.rn<today()}
+
+function migrateV24(){
+  let changed=false;
+  if(!Array.isArray(state.appleReceipts)){state.appleReceipts=[];changed=true}
+  if(!state._seededAppleV24){mergeAppleReceipts(APPLE_SEED);state._seededAppleV24=true;changed=true}
+  if(changed)save();
+  return changed;
+}
+function mergeAppleReceipts(list){
+  let added=0,updated=0;
+  (list||[]).forEach(r=>{
+    if(!r||!r.id||!r.date||!Array.isArray(r.items)||!r.items.length)return;
+    const clean={id:String(r.id),date:String(r.date).slice(0,10),pay:r.pay||'Other',total:Number(r.total)||0,tax:Number(r.tax)||0,
+      items:r.items.map(i=>({n:String(i.n||'Unknown'),p:String(i.p||''),c:AP_CAD[i.c]?i.c:'m',a:Number(i.a)||0,...(i.r?{r:String(i.r).slice(0,10)}:{})})),src:r.src||'manual'};
+    const i=state.appleReceipts.findIndex(x=>x.id===clean.id);
+    if(i>=0){state.appleReceipts[i]=clean;updated++}else{state.appleReceipts.push(clean);added++}
+  });
+  state.appleReceipts.sort((a,b)=>b.date.localeCompare(a.date));
+  _apMatch.key='';
+  return {added,updated};
+}
+
+/* items with their share of tax and their renewal date */
+const _apItemCache=new WeakMap();
+function appleItems(r){
+  let c=_apItemCache.get(r);if(c)return c;
+  const items=r.items.map(i=>({...i}));
+  const tax=Number(r.tax)||0;
+  if(tax>0){
+    let pool=items.filter(i=>AP_TAXED.test(i.n+' '+i.p));if(!pool.length)pool=items;
+    const base=pool.reduce((s,i)=>s+i.a,0)||1;let left=Math.round(tax*100);
+    pool.forEach((i,k)=>{const share=k===pool.length-1?left:Math.round(tax*100*i.a/base);i.tax=share/100;left-=share});
+  }
+  items.forEach(i=>{i.amt=Math.round((i.a+(i.tax||0))*100)/100;
+    i.rn=i.r||(i.c==='m'?addMonthsISO(r.date,1):i.c==='y'?addMonthsISO(r.date,12):i.c==='w'?addDays(r.date,7):'')});
+  _apItemCache.set(r,items);return items;
+}
+
+/* ---------- match receipts to transactions ---------- */
+let _apMatch={key:'',byTxn:new Map(),byRcpt:new Map(),cands:[]};
+function isAppleCardAcct(a){return /apple card/i.test(a||'')}
+function isAppleCandidate(t){
+  if(Number(t.amount)>=0)return false;
+  const a=t.account||'',txt=(t.merchant||'')+' '+(t.origMerchant||'')+' '+(t.statement||'');
+  if(isAppleCardAcct(a))return /apple|itunes/i.test(txt)&&!/interest|adjust|payment|cash|savings|transfer|deposit|withdraw/i.test(txt);
+  if(/apple\.com|itunes/i.test(t.statement||''))return true;
+  if(isPayPalAcct(a)&&/apple/i.test(txt))return !isMirrorTxn(t);
+  return false;
+}
+function appleMatch(){
+  const R=state.appleReceipts||[];
+  const key=R.length+'|'+(R[0]&&R[0].id)+'|'+state.transactions.length+'|'+(state.lastTxnImport||'')+'|'+(state.settings.paypalMirrors!==false);
+  if(_apMatch.key===key)return _apMatch;
+  const byTxn=new Map(),byRcpt=new Map();
+  const since=R.length?addDays(R[R.length-1].date,-2):'9999';
+  const cands=state.transactions.filter(t=>t.date>=since&&isAppleCandidate(t));
+  const used=new Set();
+  [...R].sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
+    let best=null,bd=99;
+    for(const t of cands){
+      if(used.has(t.id))continue;
+      if(Math.abs(Math.abs(Number(t.amount))-r.total)>0.005)continue;
+      const d=daysBetween(r.date,t.date);if(d<-1||d>5)continue;
+      const ac=isAppleCardAcct(t.account);
+      if(r.pay==='Apple Card'?!ac:ac)continue;
+      if(Math.abs(d)<bd){bd=Math.abs(d);best=t}
+    }
+    if(best){used.add(best.id);byTxn.set(best.id,r);byRcpt.set(r.id,best)}
+  });
+  _apMatch={key,byTxn,byRcpt,cands};
+  return _apMatch;
+}
+function appleReceiptForTxn(t){
+  const M=appleMatch();let r=M.byTxn.get(t.id);
+  if(!r&&typeof isMirrorTxn==='function'&&isMirrorTxn(t)){const o=mirrorOf(t);if(o)r=M.byTxn.get(o.id)}
+  return r||null;
+}
+/* split each matched Apple charge into one row per item (used by subscription detection) */
+function appleExpandRows(list){
+  if(!(state.appleReceipts||[]).length)return list;
+  const M=appleMatch();if(!M.byTxn.size)return list;
+  const out=[];
+  list.forEach(t=>{
+    const r=M.byTxn.get(t.id);if(!r){out.push(t);return}
+    appleItems(r).forEach(it=>out.push({...t,amount:-it.amt,merchant:it.n,_ap:{n:it.n,p:it.p,c:it.c,rn:it.rn,receipt:r.id}}));
+  });
+  return out;
+}
+function appleTxnNote(t){
+  const r=appleReceiptForTxn(t);if(!r)return '';
+  return `<div class="muted" style="font-size:10px;line-height:1.35"> ${appleItems(r).map(i=>esc(i.n)+' '+money(i.amt)).join(' · ')}</div>`;
+}
+
+/* Apple Cash transfers and Apple Card interest are not App Store spending */
+const _v24ResolveVendor=resolveVendor;
+resolveVendor=function(t){
+  const m=String(t.merchant||'').toLowerCase(),st=String(t.statement||'');
+  if(/apple card, cash|apple cash/.test(m)||(isAppleCardAcct(t.account)&&/apple card, cash/i.test(m))){
+    if(/interest/i.test(st))return {vendor:'Apple Card interest payment',via:'Apple',fuzzy:false};
+    if(/transfer|deposit|withdraw|adjust|bill payment/i.test(st))return {vendor:'Apple Cash transfer',via:'Apple',fuzzy:false};
+  }
+  return _v24ResolveVendor(t);
+};
+
+/* subscription types for App Store apps */
+['Social & Dating'].forEach(t=>{if(!SUB_TYPES.includes(t))SUB_TYPES.splice(SUB_TYPES.length-1,0,t)});
+SUB_TYPE_RULES.unshift(['Social & Dating',['grindr','growlr',"jack'd",'daddyhunt','snapchat','x']]);
+SUB_TYPE_RULES.push(['AI & Software',['spark mail','widgetsmith','goodnotes','noteshelf','echo ai note taker','perplexity','vimeo','icloud+']],
+  ['News & Learning',['apple news+','elevate']],['Gaming',['rummy 500','privateers','gecko out','monument valley']],
+  ['Finance',['copilot money','kudos']],['Other',['weather kitty','weather channel','radarscope','picture bird','dance ai']]);
+
+/* ---------- per-app summary ---------- */
+function appleApps(){
+  const R=state.appleReceipts||[];if(!R.length)return {apps:[],once:[],latest:'',first:''};
+  const latest=R[0].date,first=R[R.length-1].date,apps={},once=[];
+  [...R].sort((a,b)=>a.date.localeCompare(b.date)).forEach(r=>{
+    appleItems(r).forEach(i=>{
+      if(i.c==='o'){once.push({...i,date:r.date,pay:r.pay,rid:r.id});return}
+      const k=norm(i.n);
+      const a=apps[k]=apps[k]||{key:apKey(i.n),name:i.n,charges:[],total:0};
+      a.charges.push({date:r.date,amt:i.amt,price:i.a,plan:i.p,c:i.c,rn:i.rn,pay:r.pay,rid:r.id});a.total+=i.amt;
+    });
+  });
+  const td=today();
+  const list=Object.values(apps).map(a=>{
+    const L=a.charges.at(-1);
+    const stopped=L.rn&&L.rn<addDays(latest,-2)&&L.rn<td;
+    const plans=[...new Set(a.charges.map(c=>c.plan))];
+    const prev=a.charges.slice(0,-1).filter(c=>c.plan===L.plan&&c.c===L.c);
+    const priceChange=prev.length&&Math.abs(prev.at(-1).price-L.price)>=0.5?prev.at(-1).price:0;
+    const monthly=stopped?0:L.c==='y'?L.price/12:L.c==='w'?L.price*52/12:L.price;
+    return {...a,last:L,plan:L.plan,cad:L.c,price:L.price,amt:L.amt,pay:L.pay,lastDate:L.date,renews:L.rn,stopped,plans,priceChange,monthly,first:a.charges[0].date};
+  });
+  return {apps:list,once,latest,first};
+}
+function appleFlags(A){
+  const out=[],td=today();
+  const weekly=A.apps.filter(a=>a.charges.some(c=>c.c==='w'));
+  if(weekly.length){
+    const spent=weekly.reduce((s,a)=>s+a.charges.filter(c=>c.c==='w').reduce((x,c)=>x+c.amt,0),0);
+    const live=weekly.filter(a=>a.cad==='w'&&!a.stopped);
+    out.push({lvl:live.length?'bad':'warn',title:`Weekly plans have cost ${money(spent)} since ${shortDate(A.first)}`,
+      text:weekly.map(a=>`${esc(a.name)} ${money(a.charges.filter(c=>c.c==='w').reduce((x,c)=>x+c.amt,0))}`).join(' · ')+(live.length?` — ${live.map(a=>esc(a.name)).join(', ')} still renewing weekly (≈${money(live.reduce((s,a)=>s+a.monthly,0))}/mo).`:' — none renewing now.')});
+  }
+  A.apps.forEach(a=>{
+    for(let i=1;i<a.charges.length;i++){
+      const p=a.charges[i-1],c=a.charges[i],gap=daysBetween(p.date,c.date);
+      if(gap<=2&&c.c!=='o'&&p.rid!==c.rid)(a._dbl=a._dbl||[]).push(`${shortDate(p.date)} & ${shortDate(c.date)} (${money(p.amt+c.amt)})`);
+    }
+    if(a._dbl){out.push({lvl:'warn',title:`${esc(a.name)} charged back-to-back ${a._dbl.length>1?a._dbl.length+' times':''}`,text:`${a._dbl.join(' · ')}. If you didn't use it, ask Apple for a refund at reportaproblem.apple.com.`});delete a._dbl}
+    const byPlan={};a.charges.forEach(c=>{(byPlan[c.plan]=byPlan[c.plan]||[]).push(c)});
+    const ps=Object.keys(byPlan);
+    if(ps.length>1&&a.cad!=='w'){
+      for(const x of ps)for(const y of ps){if(x>=y)continue;
+        const ov=byPlan[x].some(cx=>byPlan[y].some(cy=>cy.date>=cx.date&&cy.date<cx.rn||cx.date>=cy.date&&cx.date<cy.rn));
+        if(ov&&!byPlan[x][0].c.includes('w')&&!byPlan[y][0].c.includes('w'))out.push({lvl:'warn',title:`${esc(a.name)}: two plans at once`,text:`${esc(x)} and ${esc(y)} were both active around ${shortDate(byPlan[y].at(-1).date)}. Make sure only one is still on.`});}
+    }
+    if(a.priceChange&&!a.stopped)out.push({lvl:a.price>a.priceChange?'bad':'info',title:`${esc(a.name)} price ${a.price>a.priceChange?'went up':'went down'}`,text:`${money(a.priceChange)} → ${money(a.price)} (${a.plan}).`});
+    if(!a.stopped&&a.cad==='y'){const du=daysUntil(a.renews);if(du>=0&&du<=30)out.push({lvl:'warn',title:`${esc(a.name)} renews in ${du} day${du===1?'':'s'}`,text:`${money(a.price)} for the year on ${shortDate(a.renews)}.`})}
+  });
+  const fresh=A.apps.filter(a=>!a.stopped&&a.first>=addDays(td,-45));
+  if(fresh.length)out.push({lvl:'info',title:`New in the last 45 days: ${fresh.map(a=>esc(a.name)).join(', ')}`,text:fresh.map(a=>`${esc(a.name)} ${money(a.price)} ${AP_CAD[a.cad].toLowerCase()} since ${shortDate(a.first)}`).join(' · ')+'. Still worth it?'});
+  return out;
+}
+
+/* ---------- Subscriptions tab card ---------- */
+function apStatus(a){
+  const d=subOvPeek(a.key).decision;
+  if(a.stopped)return `<span class="muted" style="font-size:12px">Stopped</span><div class="muted" style="font-size:10px">was due ${shortDate(a.renews)}</div>`;
+  if(d==='cancel')return `<span class="pill high">Cancel</span><div class="bad" style="font-size:10px">still renews ${shortDate(a.renews)}</div>`;
+  if(a.cad==='w')return `<span class="pill mid">Weekly</span>`;
+  return `<span class="pill paid">Active</span>`;
+}
+function apRow(a,showDec){
+  const du=a.renews?daysUntil(a.renews):null;
+  return `<tr${a.stopped?' style="opacity:.62"':''}>
+    <td><strong>${esc(a.name)}</strong><div class="muted" style="font-size:11px">${esc(a.plan)}${a.plans.length>1?` · was ${esc(a.plans.filter(p=>p!==a.plan).join(', '))}`:''}</div></td>
+    <td class="money">${money(a.price)}<div class="muted" style="font-size:10px">${AP_CAD[a.cad]}${a.amt!==a.price?` · ${money(a.amt)} w/ tax`:''}</div></td>
+    <td>${esc(a.pay)}</td>
+    <td>${shortDate(a.lastDate)}</td>
+    <td>${a.stopped?'—':`${shortDate(a.renews)}<div class="${du<0?'warn':'muted'}" style="font-size:10px">${du===0?'today':du>0?`in ${du}d`:`${-du}d ago`}</div>`}</td>
+    <td class="money">${money(a.total)}<div class="muted" style="font-size:10px">${a.charges.length} charge${a.charges.length>1?'s':''}</div></td>
+    <td>${apStatus(a)}</td>
+    <td class="right" style="white-space:nowrap">${showDec?decButtons(a.key):''}</td></tr>`;
+}
+function renderAppleCard(){
+  const el=$('appleBody');if(!el)return;
+  const R=state.appleReceipts||[];
+  if(!R.length){el.innerHTML=`<div class="empty">No Apple receipts yet. Use <strong>Add receipt</strong> to paste one from your email, or import a receipts file.</div>`;return}
+  const A=appleApps(),M=appleMatch(),td=today();
+  const active=A.apps.filter(a=>!a.stopped),stopped=A.apps.filter(a=>a.stopped);
+  const mo=active.filter(a=>a.cad!=='y').reduce((s,a)=>s+a.monthly,0),yr=active.filter(a=>a.cad==='y').reduce((s,a)=>s+a.price,0);
+  const lastTxn=state.transactions.reduce((m,t)=>{const d=String(t.date||'').slice(0,10);return /^\d{4}-\d\d-\d\d$/.test(d)&&d>m?d:m},'')||today();
+  const unR=R.filter(r=>!M.byRcpt.has(r.id)),waiting=unR.filter(r=>r.date>=addDays(lastTxn,-3)),missing=unR.filter(r=>r.date<addDays(lastTxn,-3));
+  const noRcpt=M.cands.filter(t=>!M.byTxn.has(t.id)&&t.date>=A.first&&t.date<=addDays(A.latest,1));
+  const flags=appleFlags(A);
+  const sortA=l=>l.sort((a,b)=>b.monthly-a.monthly||b.price-a.price);
+  el.innerHTML=`
+  <div class="grid kpis" style="grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:10px 0 14px">
+    <div class="card"><div class="kpi-label">Monthly plans</div><div class="kpi-value">${money(mo)}</div><div class="kpi-foot">${active.filter(a=>a.cad!=='y').length} active, before tax</div></div>
+    <div class="card"><div class="kpi-label">Yearly plans</div><div class="kpi-value">${money(yr)}</div><div class="kpi-foot">${active.filter(a=>a.cad==='y').length} renewing / yr</div></div>
+    <div class="card"><div class="kpi-label">Receipts matched</div><div class="kpi-value">${M.byRcpt.size}<span class="muted" style="font-size:15px"> / ${R.length}</span></div><div class="kpi-foot">${waiting.length?`${waiting.length} not imported yet`:'all charges found'}</div></div>
+    <div class="card"><div class="kpi-label">Latest receipt</div><div class="kpi-value" style="font-size:20px">${shortDate(A.latest)}</div><div class="kpi-foot">${daysBetween(A.latest,td)>10?'<span class="warn">add newer receipts</span>':agoText(A.latest)}</div></div>
+  </div>
+  ${flags.length?`<div style="margin-bottom:12px">${flags.map(f=>`<div class="alertrow ${f.lvl==='bad'?'bad':f.lvl==='warn'?'warn':''}"><div><strong>${f.title}</strong><div class="muted" style="font-size:12px">${f.text}</div></div></div>`).join('')}</div>`:''}
+  <div style="overflow:auto"><table><thead><tr><th>App</th><th class="money">Price</th><th>Paid with</th><th>Last charged</th><th>Renews</th><th class="money">Spent</th><th>Status</th><th></th></tr></thead>
+  <tbody>${sortA(active).map(a=>apRow(a,true)).join('')||'<tr><td colspan="8" class="empty">No active Apple subscriptions.</td></tr>'}</tbody></table></div>
+  ${stopped.length?`<details style="margin-top:12px"><summary class="muted" style="cursor:pointer">Stopped or canceled (${stopped.length}) — ${money(stopped.reduce((s,a)=>s+a.total,0))} spent</summary><div style="overflow:auto"><table><tbody>${stopped.sort((a,b)=>b.lastDate.localeCompare(a.lastDate)).map(a=>apRow(a,false)).join('')}</tbody></table></div></details>`:''}
+  ${A.once.length?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer">One-time purchases (${A.once.length}) — ${money(A.once.reduce((s,i)=>s+i.amt,0))}</summary><div style="overflow:auto"><table><tbody>${[...A.once].reverse().map(i=>`<tr><td>${shortDate(i.date)}</td><td><strong>${esc(i.n)}</strong><div class="muted" style="font-size:11px">${esc(i.p)}</div></td><td>${esc(i.pay)}</td><td class="money">${money(i.amt)}</td></tr>`).join('')}</tbody></table></div></details>`:''}
+  ${(noRcpt.length||missing.length||waiting.length)?`<details style="margin-top:8px"><summary class="muted" style="cursor:pointer">Unmatched (${noRcpt.length+missing.length+waiting.length})</summary><div class="sub" style="margin:8px 0">Apple charges with no receipt are usually Apple Store or apple.com purchases, which send a different email.</div><div style="overflow:auto"><table><tbody>
+    ${noRcpt.map(t=>`<tr><td>${shortDate(t.date)}</td><td>${esc(t.merchant)}<div class="muted" style="font-size:10px">${esc((t.statement||'').slice(0,48))}</div></td><td>${esc(t.account)}</td><td class="money">${money(t.amount)}</td><td><span class="pill mid">No receipt</span></td></tr>`).join('')}
+    ${missing.map(r=>`<tr><td>${shortDate(r.date)}</td><td>${r.items.map(i=>esc(i.n)).join(', ')}</td><td>${esc(r.pay)}</td><td class="money">${money(r.total)}</td><td><span class="pill high">No charge found</span></td></tr>`).join('')}
+    ${waiting.map(r=>`<tr><td>${shortDate(r.date)}</td><td>${r.items.map(i=>esc(i.n)).join(', ')}</td><td>${esc(r.pay)}</td><td class="money">${money(r.total)}</td><td><span class="muted" style="font-size:12px">Waiting for import</span></td></tr>`).join('')}
+  </tbody></table></div></details>`:''}`;
+}
+
+/* ---------- add receipts: paste from email, or import/export a file ---------- */
+const AP_KNOWN=[['icloud','iCloud+'],['apple news','Apple News+'],['spark','Spark Mail'],['hbo max','HBO Max'],['widgetsmith','Widgetsmith'],['vimeo','Vimeo'],["jack[’']d",'Jack\'d'],['chatgpt','ChatGPT'],['rummy','Rummy 500'],['peacock','Apple TV + Peacock'],['grindr','Grindr'],['snapchat','Snapchat'],['goodnotes','Goodnotes'],['growlr','GROWLR'],['elevate','Elevate'],['weather kitty','Weather Kitty'],['canva','Canva'],['echo','Echo AI Note Taker'],['noteshelf','Noteshelf'],['kudos','Kudos'],['weather channel','Weather Channel'],['radarscope','RadarScope'],['dance ai','Dance AI'],['perplexity','Perplexity'],['picture bird','Picture Bird'],['copilot','Copilot Money'],['daddyhunt','Daddyhunt'],['hulu','Hulu'],['^x\\b|x premium','X'],['apple music','Apple Music'],['apple one','Apple One'],['apple tv\\+?\\b','Apple TV+'],['youtube','YouTube'],['netflix','Netflix'],['spotify','Spotify'],['disney','Disney+'],['paramount','Paramount+'],['audible','Audible'],['duolingo','Duolingo'],['tinder','Tinder'],['bumble','Bumble'],['hinge','Hinge']];
+const MONTHS={jan:1,feb:2,mar:3,apr:4,may:5,jun:6,jul:7,aug:8,sep:9,sept:9,oct:10,nov:11,dec:12};
+function apParseDate(s){const m=String(s).match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sept?|oct|nov|dec)[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})/i);if(!m)return '';return m[3]+'-'+String(MONTHS[m[1].toLowerCase()]).padStart(2,'0')+'-'+String(m[2]).padStart(2,'0')}
+function apGuessName(desc){
+  const d=desc.toLowerCase();
+  for(const r of state.appleReceipts||[])for(const i of r.items){const n=i.n.toLowerCase();if(n.length>2&&d.startsWith(n))return i.n}
+  for(const [re,n] of AP_KNOWN)if(new RegExp(re,'i').test(d))return n;
+  return desc.split(/\s[-–:]\s|:\s/)[0].split(' ').slice(0,3).join(' ').slice(0,30);
+}
+function parseAppleReceipt(txt){
+  const T=String(txt||'').replace(/\r/g,'').replace(/\|/g,' ').replace(/[ \t ]+/g,' ');
+  const F=T.replace(/\s*\n\s*/g,' ');
+  const id=(F.match(/\b(M[A-Z0-9]{8,10})\b/)||[])[1]||'';
+  const date=apParseDate(F);
+  let start=0;const dm=F.match(/(Document:?|DOCUMENT NO\.?)\s*\d+/i);if(dm)start=dm.index+dm[0].length;
+  let body=F.slice(start);
+  const endM=body.search(/Billing and Payment|Subtotal|\bTOTAL\b/i);
+  const tail=endM>=0?body.slice(endM):'';if(endM>=0)body=body.slice(0,endM);
+  body=body.replace(/Apple Account:?\s*\S+@\S+/i,' ').replace(/\b(App Store|Apple Books|Report a Problem)\b/g,' ');
+  const items=[];const re=/(.+?)\$\s?(\d{1,4}(?:,\d{3})*\.\d{2})/g;let m;
+  while((m=re.exec(body))){
+    let desc=m[1].replace(/\s+/g,' ').trim();if(!desc||desc.length<2)continue;
+    const rn=apParseDate((desc.match(/Renews\s+([A-Za-z]+\.? \d{1,2},? \d{4})/i)||[])[1]||'');
+    const c=!rn?'o':/\(7 Days\)|weekly/i.test(desc)?'w':/\((Annual|Yearly)\)|\byearly\b/i.test(desc)?'y':'m';
+    const core=desc.replace(/Renews\s+[A-Za-z]+\.? \d{1,2},? \d{4}.*/i,'').replace(/\bMark'?s\s+\S*\s*(Phone|Bat ?Phone|iPad|tv|Mac)\S*(\s+\S*(Pro|Max|mini)\S*)?/ig,' ').replace(/\b(iPhone|iPad|Living Room tv)\b/g,' ').replace(/\s+/g,' ').trim();
+    const n=apGuessName(core);
+    const known=[];(state.appleReceipts||[]).forEach(r=>r.items.forEach(i=>{if(i.n===n&&i.p&&!known.includes(i.p))known.push(i.p)}));
+    let p=known.find(k=>core.toLowerCase().includes(k.toLowerCase()))||core.replace(new RegExp('^'+n.replace(/[.*+?^${}()|[\]\\]/g,'\\$&'),'i'),'').replace(/\((Monthly|Annual|Yearly|7 Days)\)/gi,'').replace(/In-App Purchase|Movie Rental|iOS App/i,'').replace(/^[\s:\-–]+/,'').replace(/\s+/g,' ').trim().slice(0,48);
+    items.push({n,p,c,a:Number(m[2].replace(/,/g,'')),...(rn?{r:rn}:{})});
+  }
+  const amts=[...tail.matchAll(/\$\s?(\d{1,4}(?:,\d{3})*\.\d{2})/g)].map(x=>Number(x[1].replace(/,/g,'')));
+  const sum=Math.round(items.reduce((s,i)=>s+i.a,0)*100)/100;
+  const total=amts.length?amts.at(-1):sum;
+  const tax=Math.max(0,Math.round((total-sum)*100)/100);
+  const pay=/Apple Card/i.test(tail+' '+F.slice(0,400))?'Apple Card':/PayPal/i.test(F)?'PayPal':/Apple (Cash|Account) Balance|Apple Gift Card/i.test(F)?'Apple balance':'Other';
+  return {id:id||('manual-'+uid()),date:date||today(),pay,total,tax,items,src:'paste'};
+}
+let _apDraft=null;
+function openAppleAdd(){_apDraft=null;$('apPaste').value='';$('apPreview').innerHTML='';$('apSaveBtn').style.display='none';openModal('appleAddModal')}
+function apParseNow(){
+  const r=parseAppleReceipt($('apPaste').value);
+  if(!r.items.length){$('apPreview').innerHTML='<div class="alertrow warn"><div>Couldn\'t find any items. Copy the whole email, from "Receipt" down to the total.</div></div>';$('apSaveBtn').style.display='none';return}
+  _apDraft=r;apDrawDraft();
+}
+function apDrawDraft(){
+  const r=_apDraft,sum=r.items.reduce((s,i)=>s+i.a,0)+r.tax,ok=Math.abs(sum-r.total)<0.01;
+  $('apPreview').innerHTML=`<div class="formgrid" style="margin-top:12px">
+    <div><label>Date</label><input id="apD" class="input" type="date" value="${r.date}"></div>
+    <div><label>Order ID</label><input id="apId" class="input" value="${esc(r.id)}"></div>
+    <div><label>Paid with</label><select id="apPay" class="input">${['Apple Card','PayPal','Apple balance','Other'].map(p=>`<option ${p===r.pay?'selected':''}>${p}</option>`).join('')}</select></div>
+    <div><label>Total charged</label><input id="apTot" class="input" type="number" step="0.01" value="${r.total.toFixed(2)}"></div></div>
+  <div style="overflow:auto;margin-top:10px"><table><thead><tr><th>App</th><th>Plan</th><th>Cadence</th><th class="money">Price</th></tr></thead><tbody>
+  ${r.items.map((i,k)=>`<tr><td><input id="apN${k}" class="input" value="${esc(i.n)}"></td><td><input id="apP${k}" class="input" value="${esc(i.p)}"></td><td><select id="apC${k}" class="input">${Object.entries(AP_CAD).map(([c,l])=>`<option value="${c}" ${c===i.c?'selected':''}>${l}</option>`).join('')}</select></td><td class="money">${money(i.a)}</td></tr>`).join('')}
+  ${r.tax?`<tr><td colspan="3" class="muted">Tax</td><td class="money">${money(r.tax)}</td></tr>`:''}</tbody></table></div>
+  <div class="sub" style="margin-top:6px">${ok?'Items and tax add up to the total.':`<span class="warn">Items + tax = ${money(sum)}, total is ${money(r.total)} — check the amounts.</span>`} Fix any app names before saving; the app learns them for next time.</div>`;
+  $('apSaveBtn').style.display='';
+}
+function apSaveDraft(){
+  const r=_apDraft;if(!r)return;
+  r.date=$('apD').value||r.date;r.id=$('apId').value.trim()||r.id;r.pay=$('apPay').value;r.total=Number($('apTot').value)||r.total;
+  r.items.forEach((i,k)=>{i.n=$('apN'+k).value.trim()||i.n;i.p=$('apP'+k).value.trim();i.c=$('apC'+k).value});
+  r.tax=Math.max(0,Math.round((r.total-r.items.reduce((s,i)=>s+i.a,0))*100)/100);
+  const res=mergeAppleReceipts([r]);save();closeModal('appleAddModal');renderAll();
+  alert(res.added?'Receipt added.':'Receipt updated.');
+}
+function importAppleFile(ev){
+  const f=ev.target.files&&ev.target.files[0];if(!f)return;
+  f.text().then(txt=>{
+    let data;try{data=JSON.parse(txt)}catch(e){alert('That file isn\'t a receipts file (JSON).');return}
+    const list=Array.isArray(data)?data:(data.appleReceipts||data.receipts||[]);
+    const res=mergeAppleReceipts(list);save();renderAll();ev.target.value='';
+    alert(`Added ${res.added} receipt${res.added===1?'':'s'}${res.updated?`, updated ${res.updated}`:''}.`);
+  });
+}
+function exportAppleFile(){
+  const blob=new Blob([JSON.stringify(state.appleReceipts||[],null,1)],{type:'application/json'});
+  const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download=`apple-receipts-${today()}.json`;document.body.appendChild(a);a.click();setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove()},500);
+}
+
+/* ---------- wiring ---------- */
+const _v24BootWithState=bootWithState;
+bootWithState=function(s){_v24BootWithState(s);try{if(migrateV24())renderAll()}catch(e){console.warn('v24 migrate',e)}};
+const _v24RenderAll=renderAll;
+renderAll=function(){_v24RenderAll();try{renderAppleCard()}catch(e){console.warn('apple',e)}};
+const _v24RenderSubs=renderSubs;
+renderSubs=function(){_v24RenderSubs();try{renderAppleCard()}catch(e){console.warn('apple',e)}};
 
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
