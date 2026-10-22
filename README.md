@@ -1,79 +1,116 @@
-> **Current version: v13** (shown in the app itself — sidebar under the logo, and in Settings & Backup — bump `APP_VERSION` in `transform.py` and re-run it on every future delivery, per Mark's request on Sept 8 to always be able to tell which build he's looking at).
+# Claudia Cash — v23
 
-# Claudia Cash — update notes
+A personal safe-to-spend budget that answers one question: **what can I safely spend until next payday?** It runs as a single-file web app (PWA) on GitHub Pages, installs to the iPhone home screen, and is fed by CSV exports from Monarch.
 
-## What changed (Sept 6, first update)
-- Dashboard: pinned to the current pay cycle (removed clickable cycle-switcher chips); next paycheck now shows days remaining. "Import Monarch CSV" renamed to "Import Transactions." The 5 KPI cards (Cash on hand, Cycle bills, Already paid, Left to be paid, Safe to spend) are now clickable and open a breakdown modal. Added a red flag banner when the current cycle's paycheck differs from the previous one. Added a subscription-renewal reminder banner (shows subs renewing within ~10 days).
-- This pay cycle table: Status is now just "Paid"/"Not Paid". Added separate "Amount Due" and "Actual" columns; Actual shows in red when it's more than Amount Due.
-- Sidebar: added a collapsible "Data" group containing Bills, Pay Cycles, Transactions, Monthly History.
-- Monthly History: Top categories now shows the current month, then last month, as two separate lists (previously one all-time blended list).
-- Credit Cards: credit limit is now editable inline in the table (not just via Edit). Added a note explaining what "Overall utilization" means and why it needs a limit set.
-- Investments: hid the duplicate "Retirement & Savings Plan" mirror row entirely (previously shown with a note). Added the 2022 Cadillac XT5 as a manual asset (KBB estimate ~$23,640 private-party, Premium Luxury trim/turbo I4, good condition — adjust in Accounts tab if actual mileage/condition differs). Investment-type accounts with no CSV balance history now show their manually-entered balance instead of being silently excluded.
-- Subscriptions: added price-increase flags (red highlight + "was $X" when the latest charge is higher than history), broadened the auto-detect hint list, and the renewal-reminder banner on the dashboard described above.
-- Theme: lightened the dark palette slightly (was very close to pure black), added a light/dark toggle in the sidebar, and the light theme uses the Claude-orange (#D97757) accent to match the Claudia Cash logo.
-- Branding: added the Claudia Cash logo (Mark supplied it) as the browser favicon and sidebar mark; title/meta tags updated from "Cash Tracker" to "Claudia Cash".
+Your data is cached on the device (IndexedDB) and, when you sign in with Google, synced to your Supabase project so the phone and the Mac see the same budget.
 
-## Cross-device cloud sync (Sept 6, second update — now confirmed working live)
-Mark's real ask behind the Safari import bug turned out to be bigger than a bug fix: he wants his budget to sync across his devices (phone + MacBook), not just survive quota limits on one device. Shipped:
-- **Local storage swapped from localStorage to IndexedDB.** Same "one big JSON blob" model as before, but IndexedDB has a vastly higher quota, so the ~5MB, 14,700-row transaction history that was crashing Safari's localStorage now saves without issue on any device/browser. Existing localStorage data (key `payCycleBudget_v1`) is auto-migrated into IndexedDB the first time the new file loads, then the old key is cleared.
-- **Supabase backend for real cross-device sync**, chosen over Firebase because its Postgres `jsonb` column has no practical size cap (Firestore documents cap at 1MB, which the transaction history would eventually hit). Mark's project: `https://pyufiuvjwljgmcmrgoal.supabase.co`. One table, `public.budgets` (`user_id uuid primary key`, `data jsonb`, `updated_at`), with row-level security so each signed-in user can only read/write their own row.
-- **Google sign-in** (Supabase Auth + Google OAuth) gates the app on first load: "Sign in with Google" to sync across devices, or "Use this device only" to keep using it exactly like before, fully local, no account needed. Saved data pushes to the cloud ~1.2s after every change (debounced), and pulls down on sign-in.
-- **Setup completed and confirmed live Sept 6–8**: Mark created the Google Cloud OAuth client, hit an `unable_to_exchange_external_code` error twice (root cause: a corrupted/mismatched Client Secret — fixed by regenerating a fresh secret in Google Cloud Console and re-pasting into Supabase), then hit a Postgres `statement timeout` on the very first real sync (root cause: Supabase's free-tier default 8-second `statement_timeout` for the `authenticated` role, hit because a full sync pushes the *entire* transaction history as one JSON blob — fixed by running `alter role authenticated set statement_timeout = '30s'; NOTIFY pgrst, 'reload config';` in the SQL Editor). Confirmed via the Supabase Table Editor: a real row with Mark's actual bill/transaction data is syncing correctly.
-- **Known future risk, not yet urgent**: because the whole transaction history rides along on every sync, this will keep getting slower/heavier as more months of history are imported. If timeouts come back even at 30s, the real fix is splitting transactions out of the synced blob rather than raising the timeout further — flagged to Mark, not yet built.
-- Also fixed a related bug this work surfaced: if a cloud-saved budget were ever missing fields (older schema, manual edit, etc.), the app would crash on boot instead of filling in sane defaults — added a `normalizeState()` safety net so that can't happen.
+---
 
-## Credit Cards: APR advisor + fix for the duplicate-card bug (Sept 8)
-Two asks: (1) let Mark enter each card's APR and use it to flag when he has spare cash that should go toward paying down a card instead of sitting in checking, and (2) fix a real bug — one of his cards changed its card number, so Monarch now reports it under a new name, which the app was treating as a brand new card while the old one stuck around forever with a frozen, stale balance (double-counting it in every total).
-- **APR field**: editable right in the Credit Cards table (inline, like the existing Limit column) or via the Edit modal. Shows a computed "≈$X/mo at this rate" hint under the card name once APR is set (`balance × APR ÷ 12`).
-- **Extra-payment advisor**: a banner above the cards table. When "Safe to spend" (cash on hand minus what's still due this cycle) exceeds a cushion Mark sets in Settings → Funding rules ("CC cushion before extra payments", defaults to $0), it recommends paying the surplus toward whichever card has the highest APR (the "avalanche" method — mathematically the fastest way to cut total interest), with a rough $/yr interest-savings estimate and a ranked list of the top 3 cards by APR. Banner stays hidden if there's no surplus or no card has an APR set yet (with a small nudge to add one).
-- **Duplicate/renamed-card fix**: added an "Exclude" button on every card row (both a real tracked card and a "detected but not yet added" row). Excluding a card removes it from the list *and* remembers it permanently (`card.excluded` flag for tracked cards, a separate `excludedBalKeys` list for detected-only rows) — so unlike a plain delete, it does **not** come back the next time a Balances CSV import reports data under that old name. A new "Excluded credit cards" panel in Settings lists everything hidden this way with a one-click Restore, and excluded cards are skipped when Balances-import auto-matching runs and when picking cards from the "link this account" dropdown, so a stale card can never silently reabsorb new balance data either.
-- Regression-tested: 5 Playwright scenarios (APR entry + advisor banner appearing, cushion setting suppressing it, the exact duplicate-card-survives-reimport scenario, excluding a never-added detected row, and the new fields surviving a full save/reload) — all pass with no console errors — plus the full existing suite (14,942-row CSV import, Supabase mock sign-in flows, theme toggle, all tabs) re-run clean.
+## What's new in v23
 
-## App version display (Sept 8)
-Mark asked to be able to tell which version of the app he's looking at. Added a single source of truth — `APP_VERSION` near the top of `transform.py` — rendered in two places: right under the "Claudia Cash" logo in the sidebar (visible on every tab) and in the Settings & Backup page header. **For every future delivery: bump `APP_VERSION` by 1 before running `transform.py`.**
+### PayPal double entries fixed
+Monarch records most PayPal purchases twice: once on the **PayPal** account ("Payment to Spotify") and again on the bank account or card PayPal pulled the money from ("PAYPAL DES:PURCHASE ID:SPOTIFY…"), usually 0–4 days later.
 
-## Payoff Planner: new tab, adapted from Mark's ChatGPT tool (Sept 8, v10)
-Mark had separately built a standalone "Debt Payoff Tracker" page with ChatGPT (its own priority scoring, a multi-strategy payoff-plan builder, and a payment log) but it only worked with manually-seeded, static balances. He asked for the same capability inside Claudia Cash, wired to his real, live data (transactions, balances, APR, credit limits). Two decisions were confirmed with Mark before building: (1) ship it as a new sidebar tab in the same app/file rather than a separate standalone page, so it always reads whatever cards are currently loaded and never drifts out of sync with the main app's styling, data migrations, or cloud sync; (2) "logging" a plan is a reference note only — it never touches a card's actual balance, since real balances always come from his Balances CSV imports (unlike the original ChatGPT tool, which manually decremented balances).
-- **New "Payoff Planner" sidebar tab**, right below Credit Cards. Reads the exact same `cardRows()` data (balance, APR, credit limit, minimum payment) that powers the Credit Cards tab — no separately-entered data.
-- **KPIs**: total card debt, paid-down-since-baseline, how many cards have both APR and limit on file, and an estimated monthly interest cost derived from APR (separate from the Credit Cards tab's transaction-history-based interest average).
-- **Priority ranking**: blends APR, utilization, balance size, and minimum-payment cash-flow relief into one 0–100 score per card (ported from Mark's ChatGPT tool's scoring model), labeled High/Medium/Standard priority. Missing APR/limit/minimum is simply left out of that card's score rather than guessed.
-- **Baseline tracking**: the first time Mark opens this tab, today's total card debt is captured as a baseline snapshot; "Paid down" tracks the drop from that baseline as real balances change via CSV imports. A "Reset baseline to today's total" button lets him restart the count anytime (e.g. after a big one-time payment).
-- **Payoff plan builder**: enter an amount available and a cash-to-preserve cushion (pre-filled from the current Safe-to-spend surplus and the existing CC cushion setting, respectively — both editable), pick a strategy, and it proposes a specific dollar allocation across cards. "Save this plan to the log" records it to a persistent plan log (with delete) purely for Mark's own reference.
-- Regression-tested: 6 Playwright scenarios (KPI rendering + ranking order, baseline auto-capture correctly deferred until the tab is actually opened — an early bug where it was capturing $0 at page-boot before any cards loaded was caught and fixed — paid-down tracking a real balance drop, avalanche-strategy plan ordering, logging a plan leaves balances untouched and is deletable, excluded cards never appear in the ranking, and full state persisting across a reload) — all pass clean, plus the full existing Credit Cards and Supabase-sync suites re-run with no regressions.
+- The app now keeps the **bank/card copy** (where the money actually left) and skips the matching **PayPal-account copy**.
+- Applies to Subscriptions, Monthly History, Budgets and bill matching.
+- PayPal purchases with no bank/card twin (paid from your PayPal balance) still count.
+- Pending PayPal "Authorization to …" holds followed by the real "Payment to …" are skipped too.
+- Subscriptions use PayPal's clean merchant name, e.g. `XANDRIEUSAD` → **Qobuz USA**.
+- Nothing is deleted. Skipped rows stay on the Transactions tab, labeled *PayPal copy · not counted*.
+- **Settings → PayPal** shows how many were skipped and can turn this off.
 
-## Payoff Planner: "spread" strategy (Sept 8, v11)
-Mark asked whether splitting extra cash across several high-APR cards, instead of dumping it all into the single highest-APR one, would lower payments on multiple cards. Answered in chat (mathematically, concentrating on one card at a time — avalanche — always minimizes total interest; spreading trims more balances/minimums sooner at a small interest cost) and then added a way to see it with his own numbers:
-- **"Spread across top APR cards"** — a 5th strategy option in the Planner's dropdown. Round-robins the available amount across the 3 highest-APR cards each "round" (capping each at its own balance), then rolls any leftover to the next-highest-APR card outside that top 3 — as opposed to "Highest APR first," which fully pays down one card before touching the next.
-- Added a note directly in the UI explaining the trade-off in plain terms, so the distinction isn't just in chat history.
-- The single-shot allocation logic was refactored into a shared `allocateAcrossCards()` function (previously inlined in `buildPayoffPlan()`), since v12 below reuses it for month-by-month simulation too.
+## What's new in v22
 
-## Payoff Planner: strategy comparison table + rule-based insights (Sept 8, v12)
-Mark asked for two things together: (1) rule-based insights in the app rather than a live AI backend (a real LLM-backed version would need a secure server-side proxy to hold an API key safely, plus ongoing per-use cost — discussed and set aside for now), and (2) a table on the Payoff Planner screen ranking every strategy by interest saved. Built as one feature, since the table itself *is* the concrete analysis:
-- **`simulateStrategy()`**: runs a month-by-month projection for a given strategy and extra-payment amount — interest accrues on each open balance, minimums are paid (estimated at max($25, 2% of balance) when a card has none on file), and whatever's left of a fixed monthly budget (starting total minimums + the extra amount, held constant) is allocated per-strategy via the same `allocateAcrossCards()` used for the single-shot plan. A paid-off card's minimum automatically rolls into next month's leftover, matching how avalanche/snowball calculators are supposed to work. Capped at 600 months (50 years) as a safety net against a minimum too small to cover accruing interest (verified this doesn't hang — resolves in ~200ms even in a deliberately pathological case).
-- **"Compare strategies" card**: runs all 5 strategies (Blended, Highest APR, Spread, Smallest balance, Highest utilization) against a paying-minimums-only baseline at the current Amount available, and renders a table ranked by interest saved (🏆 + "Best" pill on the top row) — months to debt-free and estimated total interest shown alongside. Refreshes whenever "Build plan" is clicked, using the same inputs as the plan builder above it.
-- **Rule-based insight line**: a plain-English sentence above the table (e.g. "At $400/mo extra, Blended pays these off in 17 mo and saves about $5,693.55 in interest vs. minimums only (67 mo, $6,943.89) — the most efficient option below"), or a minimums-only summary when no extra amount is entered. This is the "insights" half of the ask — auto-written from real numbers, no external AI call, no new cost or infrastructure.
-- Verified against theory: in a 3-card test (28%/19%/11% APR), Blended and Highest APR tied for lowest interest as expected (both target the 28% card first here), Smallest balance came out worst, Spread and Highest utilization landed in between — all directionally correct for how these methods are supposed to compare.
-- Regression-tested: dedicated Playwright checks (comparison table ranks correctly, zero-extra shows the minimums-only message, a deliberately pathological high-APR/tiny-minimum card resolves in ~200ms instead of hanging) plus the full existing Payoff Planner, spread-strategy, and Credit Cards suites re-run clean.
+### Monthly card-payment update
+- At the start of each month, Home shows **"New month: update your card payments."**
+- **Review** opens a preview: each credit card bill, its current amount, the payments found last month, and an editable new amount. Nothing changes until you tap **Update checked bills**.
+- Two payments to one card in a month are **added together**. Type over it if you'd rather use one.
+- Unpaid amounts in this and future pay cycles follow along, unless you've overridden them for a cycle.
+- Also available from **Bills → Update card payments** and **Settings → Monthly card payments**, which keeps a log.
+- Each bill has a **Credit card payment?** setting (Auto / Yes / No) for anything not detected automatically.
 
-## Payoff Planner: "Export for AI analysis" (Sept 9, v13)
-Mark wanted a way to occasionally feed his credit card debt picture into a chat with Claude or ChatGPT for outside analysis, on demand. Rather than reusing the existing full-app "Export JSON backup" (which would drag along every account, bill, and the entire transaction history — too much, and more than he needs to hand to a third-party AI tool for this), built a purpose-scoped export:
-- **"Export for AI analysis" button** in the Payoff Planner's topbar. Downloads `claudia-cash-cc-analysis-<date>.json` containing only credit-card data: each card's balance, APR, limit, utilization %, minimum payment, 30-day change, and priority score/label; the same summary KPIs shown on-screen (total debt, paid-down-since-baseline, est. monthly interest); the current Amount available / Cash to preserve figures; and the full 5-strategy comparison (months to debt-free, total interest, interest saved) at that amount — reusing the exact same `simulateStrategy()`/`allocateAcrossCards()` functions that power the on-screen table, so the export always matches what he sees.
-- Includes a `suggestedPrompt` field and an `assumptions` field right in the JSON, so the file is self-explanatory if Mark just attaches it to a chat without extra context (states the APR/minimum-estimate assumptions and explicitly notes it contains no account balances, bills, or transaction history).
-- Regression-tested: verified the downloaded file's actual contents (not just that a click didn't error) — correct scoped fields, no leakage of unrelated state, comparison table sorted correctly, and a no-cards-yet case producing a valid empty export instead of crashing. Full existing Payoff Planner, spread-strategy, and Credit Cards suites re-run clean.
+### Home page
+- **Subscriptions this pay period** now sits below the Bills section.
+- Hover (Mac) or tap (iPhone) **Expected**, **Charged so far**, **Still to come** or **From cash, not a Bill** to see the subscriptions behind each total, with date, amount and account.
+- New banners:
+  - **Price increases:** subscriptions that went up, with the extra cost per year. Clears when you mark one Keep or Cancel.
+  - **Data getting old:** transactions or balances more than 7 days old, with import buttons.
 
-## Bugs fixed
-- Found and fixed a pre-existing crash: the code wrote to a `ccPlanned` element that didn't exist anywhere in the HTML (leftover from an older 3-box credit-card KPI layout). It was unguarded, so every `renderAll()` call threw partway through — which silently prevented Funding & Transfers, Subscriptions, Investments, and most of the Credit Cards page from ever rendering, on every load. Also hardened `renderAll()` so one section's error can no longer take down the others.
-- Transaction import silently did nothing in Safari on Mark's MacBook (worked fine in Chrome) with a ~14,700-row Monarch CSV export. Confirmed root cause via Mark's screenshot: `localStorage` quota exceeded. **Superseded by the IndexedDB switch above** — this class of crash shouldn't happen at all now. A friendly-message fallback (added at the time) is kept as a last resort. Also optimized `runMatching()` from an O(assignments² × transactions) nested scan to O(assignments × transactions) using a Set.
+### Subscriptions
+- New **Last charge** column (date, amount, how long ago), plus a *Last charge* sort.
+- **Needs attention** now shows the price and yearly cost, last and next charge, what pays for it, whether it's a Bill, charge count and total, and the last four charges.
 
-## Delivered files
-- `index.html` — full updated app (v13): single file; IndexedDB local cache; optional Google sign-in + Supabase cloud sync, confirmed live; Credit Cards APR advisor + card-exclude feature; Payoff Planner tab with 5 strategies, a month-by-month strategy comparison table, rule-based insights, and a scoped "Export for AI analysis" button; version number shown in-app
-- `README.md` — organized reference doc for Mark's repo (Main functionality / Module functionality / Data & privacy / Changelog), delivered at v9; due for a changelog refresh to cover v10–v13 (Payoff Planner, spread strategy, comparison table + insights, AI-analysis export)
-- `icon-180.png` — regenerated Add-to-Home-Screen icon from Mark's logo, for his GitHub Pages repo
-- `supabase_setup.sql` — SQL to create the `budgets` table + RLS policies (already run by Mark)
+### Settings
+- **Merchant renames:** "When the merchant contains X, show it as Y" (e.g. *Deuscom → The Blowers*). Applies to all existing transactions and every future import. Bill matching still recognizes the original name.
+- **Automatic backups:** a full copy of your data is saved on the device right before every CSV import. The last 3 are kept, each with **Download** and **Restore**. Use **Back up now** anytime.
 
-## Still open
-- Watch for the sync-timeout risk described above as Mark's transaction history keeps growing — no action needed unless it recurs.
-- Mark mentioned a 4th subscriptions ask ("something else") that was never specified — follow up if he brings it back.
-- `manifest.webmanifest` (referenced by the HTML, not part of this file) may still say "Cash Tracker" — Mark should check/update it in his repo if so.
-- The README delivered to Mark is still at v9 — offer to refresh its changelog next time he's touching the repo, to cover v10 (Payoff Planner), v11 (spread strategy), v12 (comparison table + insights), and v13 (AI-analysis export).
-- If Mark later wants genuinely AI-generated (LLM) insights built into the app itself, rather than exporting a JSON snapshot to paste into a separate chat, that still needs a small secure backend (e.g. a Supabase Edge Function holding an API key) — deliberately not built, since it's a real cost/infra decision, not a code change. The v13 export covers the "occasional, on-demand" use case he described without that infrastructure.
+### Payoff Planner
+- **Balance by month:** each card's month-end balance for the last three months against today, the change, and a trend line.
+
+### Fixes
+- KPI boxes no longer run off the screen on iPhone (Payoff Planner and others).
+
+---
+
+## Tabs at a glance
+
+| Tab | What it does |
+|---|---|
+| **Dashboard** | Cash on hand, this cycle's bills, paid / left, and **Safe to spend** until next payday. Bills for the cycle, cash accounts, subscriptions this pay period, and alert banners. |
+| **Accounts** | Checking, savings and other accounts. Only accounts marked *Include in cash on hand* count toward Safe to spend. |
+| **Funding & Transfers** | Which account pays each bill, what each account needs this cycle, and the transfers to make, and by when. |
+| **Subscriptions** | Recurring services detected from your history, decisions (Keep / Review / Cancel), Needs attention queue, types and overlap. |
+| **Budgeting** | Monthly targets for discretionary categories, with suggestions from your last 6 months. |
+| **Credit Cards** | Balances, limits, utilization, interest and payments per card. |
+| **Payoff Planner** | Priority ranking, balance by month, payoff plan builder, strategy comparison and plan log. |
+| **Investments** | Balance history and change for investment accounts. |
+| **Data → Bills / Pay Cycles / Transactions / Monthly History** | The underlying records. |
+| **Settings & Backup** | Pay and funding rules, backups, PayPal, merchant renames, monthly card payments, sync. |
+
+---
+
+## Routine
+
+**Every week (or before you check Safe to spend):**
+1. In Monarch, export **Transactions** and **Balances** as CSV.
+2. In the app: **Import Transactions**, then **Import balances**. A backup is taken automatically before each.
+3. Check the Home banners: transfers, price increases, renewals.
+
+**Once a month (first few days):**
+1. Tap **Review** on the *update your card payments* banner.
+2. Check the amounts, then **Update checked bills**.
+
+**When something looks wrong after an import:**
+- **Settings → Automatic backups → Restore** the copy taken just before that import.
+
+---
+
+## Publishing an update
+
+1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V23`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
+2. Commit and push.
+3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v23`), so the new build replaces the old one cleanly.
+
+On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen**.
+
+---
+
+## Data & privacy
+
+- Data is stored on each device in IndexedDB.
+- When signed in with Google, it syncs to your Supabase project. Transactions are stored in their own table so each save stays small.
+- **Settings → Export JSON backup** before changing phones or clearing Safari data. Automatic backups live only on the device that made them.
+
+---
+
+## Version history (recent)
+
+| Version | Date | Highlights |
+|---|---|---|
+| v23 | Oct 22, 2026 | PayPal double entries skipped; clean PayPal merchant names |
+| v22 | Oct 22, 2026 | Monthly card-payment update, hover details, last charge, richer Needs attention, price/stale banners, merchant renames, balance by month, automatic backups |
+| v21 | Oct 15, 2026 | Subscriptions management: types, decisions, Needs attention, review of bundled Apple/PayPal charges |
+| v20 | Sep 2026 | Subscriptions shown in the pay cycle |
+| v19 | Sep 2026 | Cloud sync stores transactions separately for large histories |
+| v7 | Sep 6, 2026 | Supabase sync with Google sign-in |
+| v4 | Sep 3, 2026 | Funding & Transfers, subscription detection, PayPal vendor resolution |
