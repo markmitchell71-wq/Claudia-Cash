@@ -145,6 +145,15 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
   .modal{max-height:calc(100vh - 40px - env(safe-area-inset-top))}
 }
 #syncStatus[data-kind=ok]{color:#4ade80}#syncStatus[data-kind=busy]{color:#93c5fd}#syncStatus[data-kind=warn]{color:#fbbf24}#syncStatus[data-kind=bad]{color:#f87171}
+.haspop{cursor:pointer;outline:none;transition:box-shadow .15s}.haspop:hover,.haspop:focus{box-shadow:0 0 0 1px var(--accent) inset}
+.haspop .kpi-label::after{content:" ⓘ";opacity:.55}
+.ccpop{position:fixed;z-index:80;display:none;background:var(--modalbg);border:1px solid var(--line);border-radius:12px;padding:10px 12px;box-shadow:var(--shadow);font-size:12px;max-height:60vh;overflow:auto}
+.ccpop .pophead{display:flex;justify-content:space-between;gap:10px;font-size:13px;margin-bottom:6px}
+.ccpop table{width:100%;border-collapse:collapse}.ccpop td{padding:5px 4px;border-bottom:1px solid var(--line);vertical-align:top}
+.attnfacts{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
+.attnfacts b{color:var(--text);font-weight:700}
+.attnhist{font-size:11px;color:var(--muted);margin-top:4px}
+@media(max-width:700px){.grid.kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 </style>
 </head>
 <body>
@@ -178,6 +187,9 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
       <div id="transferBanner" style="display:none;margin-bottom:14px"></div>
       <div id="paycheckFlag" style="display:none;margin-bottom:14px"></div>
       <div id="subsRenewalBanner" style="display:none;margin-bottom:14px"></div>
+      <div id="ccRollBanner" style="display:none;margin-bottom:14px"></div>
+      <div id="staleBanner" style="display:none;margin-bottom:14px"></div>
+      <div id="priceUpBanner" style="display:none;margin-bottom:14px"></div>
       <div class="grid kpis">
         <div class="card" onclick="openKpiDetail('cash')"><div class="kpi-label">Cash on hand</div><div id="kCash" class="kpi-value">$0</div><div class="kpi-foot">Across included cash accounts • tap for detail</div></div>
         <div class="card" onclick="openKpiDetail('bills')"><div class="kpi-label">Cycle bills</div><div id="kBills" class="kpi-value">$0</div><div class="kpi-foot">Planned for this pay cycle • tap for detail</div></div>
@@ -197,18 +209,6 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
           <div class="kpi-foot" id="nextPayDays"></div>
         </div>
       </div>
-      <div id="cycleSubsCard" class="card" style="margin-bottom:18px;display:none">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>🔁 Subscriptions this pay period</h2><button class="btn small" onclick="showTab('subs')">Manage</button></div>
-        <div class="sub" id="cycleSubsWindow"></div>
-        <div class="minikpis">
-          <div><div class="kpi-label">Expected</div><div class="v" id="csTotal">$0</div></div>
-          <div><div class="kpi-label">Charged so far</div><div class="v good" id="csCharged">$0</div></div>
-          <div><div class="kpi-label">Still to come</div><div class="v warn" id="csUpcoming">$0</div></div>
-          <div><div class="kpi-label">From cash, not a Bill</div><div class="v" id="csUncounted">$0</div></div>
-        </div>
-        <div id="cycleSubsNote"></div>
-        <div style="overflow:auto"><table><thead><tr><th>Service</th><th>Date</th><th class="money">Amount</th><th>Paid with</th><th>Status</th></tr></thead><tbody id="cycleSubsBody"></tbody></table></div>
-      </div>
       <div class="grid two">
         <div class="card">
           <div style="display:flex;justify-content:space-between;align-items:center"><h2>This pay cycle</h2><button class="btn small" onclick="showTab('cycles')">Manage</button></div>
@@ -221,6 +221,18 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
           <div class="note" style="margin-top:13px">Your workbook’s “Total On Hand” logic is preserved here: account balances are summed first, then remaining unpaid bills are subtracted to show the amount that is actually free.</div>
         </div>
       </div>
+      <div id="cycleSubsCard" class="card" style="margin-top:18px;display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>🔁 Subscriptions this pay period</h2><button class="btn small" onclick="showTab('subs')">Manage</button></div>
+        <div class="sub" id="cycleSubsWindow"></div>
+        <div class="minikpis">
+          <div class="haspop" data-pop="total" tabindex="0"><div class="kpi-label">Expected</div><div class="v" id="csTotal">$0</div></div>
+          <div class="haspop" data-pop="charged" tabindex="0"><div class="kpi-label">Charged so far</div><div class="v good" id="csCharged">$0</div></div>
+          <div class="haspop" data-pop="upcoming" tabindex="0"><div class="kpi-label">Still to come</div><div class="v warn" id="csUpcoming">$0</div></div>
+          <div class="haspop" data-pop="uncounted" tabindex="0"><div class="kpi-label">From cash, not a Bill</div><div class="v" id="csUncounted">$0</div></div>
+        </div>
+        <div id="cycleSubsNote"></div>
+        <div style="overflow:auto"><table><thead><tr><th>Service</th><th>Date</th><th class="money">Amount</th><th>Paid with</th><th>Status</th></tr></thead><tbody id="cycleSubsBody"></tbody></table></div>
+      </div>
     </section>
 
     <section id="cycles" class="section">
@@ -229,7 +241,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
     </section>
 
     <section id="bills" class="section">
-      <div class="topbar"><div><h1>Bills & Obligations</h1><div class="sub">Reusable bill definitions. Assign each one to a pay cycle; matching transactions can mark them paid automatically.</div></div><button class="btn primary" onclick="openBillModal()">Add bill</button></div>
+      <div class="topbar"><div><h1>Bills & Obligations</h1><div class="sub">Reusable bill definitions. Assign each one to a pay cycle; matching transactions can mark them paid automatically.</div></div><div class="actions"><button class="btn" onclick="openCcRoll()">Update card payments</button><button class="btn primary" onclick="openBillModal()">Add bill</button></div></div>
       <div class="card" style="overflow:auto"><table><thead><tr><th>Name</th><th>Due</th><th class="money">Default amount</th><th>Auto / recurring</th><th>Merchant aliases</th><th></th></tr></thead><tbody id="billsBody"></tbody></table></div>
     </section>
 
@@ -297,11 +309,11 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
       </div>
       <div class="card" style="overflow:auto">
         <div class="subtools">
-          <div><label>Sort</label><select id="subSort" class="input" onchange="renderSubs()"><option value="cost">Cost (high → low)</option><option value="next">Next charge</option><option value="name">Name</option><option value="type">Type (grouped)</option></select></div>
+          <div><label>Sort</label><select id="subSort" class="input" onchange="renderSubs()"><option value="cost">Cost (high → low)</option><option value="next">Next charge</option><option value="last">Last charge (newest)</option><option value="name">Name</option><option value="type">Type (grouped)</option></select></div>
           <div><label>Decision</label><select id="subFilterDec" class="input" onchange="renderSubs()"><option value="">All</option><option value="none">Undecided</option><option value="keep">Keep</option><option value="review">Review</option><option value="cancel">Cancel</option></select></div>
           <div><label>Type</label><select id="subFilterType" class="input" onchange="renderSubs()"><option value="">All types</option></select></div>
         </div>
-        <table><thead><tr><th>Service</th><th>Type</th><th>Charged to</th><th class="money">Amount</th><th>Cadence</th><th class="money">Per month</th><th>Next charge</th><th>Decision</th><th></th></tr></thead><tbody id="subsBody"></tbody></table></div>
+        <table><thead><tr><th>Service</th><th>Type</th><th>Charged to</th><th class="money">Amount</th><th>Cadence</th><th class="money">Per month</th><th>Last charge</th><th>Next charge</th><th>Decision</th><th></th></tr></thead><tbody id="subsBody"></tbody></table></div>
       <div id="subsReview"></div>
       <div class="note" style="margin-top:14px">PayPal charges are resolved to the real vendor from the statement descriptor. Charges that read APPLE.COM BILL are an App Store bundle and cannot be split from bank data — check Settings → your name → Subscriptions on your iPhone to itemize those.</div>
     </section>
@@ -357,6 +369,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
         <div class="card"><h2>Priority ranking</h2><div class="note" style="margin-bottom:12px">Blends APR, utilization, balance size, and minimum-payment relief into one score. A missing APR/limit/minimum is left out of that card's score, not guessed.</div><div id="poRanking"></div></div>
         <div class="card"><h2>Baseline</h2><div class="note">Paid-down progress is measured against a baseline snapshot of your total balance, captured automatically the first time you open this tab.</div><div class="actions" style="margin-top:12px"><button class="btn" onclick="resetPayoffBaseline()">Reset baseline to today's total</button></div></div>
       </div>
+      <div class="card" style="margin-top:14px;overflow:auto"><h2>Balance by month</h2><div class="sub" style="margin-bottom:10px">Is each card actually going down? Month-end balances for the last three months against today.</div><div id="poTrend"></div></div>
       <div class="card" style="margin-top:14px"><h2>Build a payoff plan</h2>
         <div class="formgrid">
           <div><label>Amount available</label><input id="poAmount" class="input moneyin" type="number" min="0" step=".01" oninput="this.dataset.touched='1'"></div>
@@ -402,6 +415,11 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
       </div>
       <div class="card" style="margin-top:14px"><h2>Excluded credit cards</h2><div id="excludedCardsBody"></div><div class="note" style="margin-top:10px">Cards you exclude stay hidden here even after future Balance CSV imports — restore one anytime.</div></div>
       <div class="card" style="margin-top:14px"><h2>Account &amp; Sync</h2><div id="acctSyncBody"></div></div>
+      <div class="grid two" style="margin-top:14px">
+        <div class="card"><h2>Monthly card payments</h2><div class="note" style="margin-bottom:12px">Once a month, set each credit card bill to what you actually paid on it the month before. You review every change first; unpaid amounts in this and future pay cycles follow along.</div><div id="ccRollSettings"></div></div>
+        <div class="card"><h2>Automatic backups</h2><div class="note" style="margin-bottom:12px">A full copy of your data is saved on this device right before every CSV import. The last 3 are kept. Download one to keep it, or restore it to undo an import.</div><div class="actions" style="margin-bottom:10px"><button class="btn" onclick="backupNow()">Back up now</button></div><div id="snapBody" style="overflow:auto"></div></div>
+      </div>
+      <div class="card" style="margin-top:14px"><h2>Merchant renames</h2><div class="note" style="margin-bottom:12px">Monarch sometimes shows a merchant under a name you don't recognize. Renames apply to every matching transaction now and on every future import. Bill matching still recognizes the original name.</div><div style="overflow:auto"><table><thead><tr><th>When the merchant contains</th><th>Show it as</th><th></th></tr></thead><tbody id="renameBody"></tbody></table></div><div class="actions" style="margin-top:10px"><button class="btn primary" onclick="saveRenames()">Save &amp; apply to all transactions</button></div></div>
     </section>
   </main>
 </div>
@@ -419,6 +437,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <div><label>Bill name</label><input id="billName" class="input"></div><div><label>Due day</label><input id="billDue" class="input" placeholder="1, 15, 30 or every check"></div><div><label>Default amount</label><input id="billAmount" class="input moneyin" type="number" step=".01"></div><div><label>Recurring</label><select id="billRecurring" class="input"><option value="true">Yes</option><option value="false">No</option></select></div>
 <div><label>Paid from account</label><select id="billAccount" class="input"></select></div>
 <div><label>Subscription?</label><select id="billIsSub" class="input"><option value="auto">Auto-detect</option><option value="yes">Yes</option><option value="no">No</option></select></div>
+<div><label>Credit card payment?</label><select id="billIsCard" class="input"><option value="auto">Auto-detect</option><option value="yes">Yes</option><option value="no">No</option></select></div>
 <div style="grid-column:1/-1"><label>Merchant aliases (comma separated)</label><input id="billAliases" class="input" placeholder="e.g., VZ WIRELESS, VERIZON"></div>
 </div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveBill()">Save bill</button></div></div></div>
 
@@ -441,6 +460,12 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <input id="budgetEditId" type="hidden"><div class="formgrid">
 <div><label>Category</label><select id="budgetCategory" class="input"></select></div><div><label>Monthly target</label><input id="budgetAmount" class="input moneyin" type="number" step=".01"></div>
 </div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveBudget()">Save budget</button></div></div></div>
+
+<div id="ccRollModal" class="modalback"><div class="modal"><div class="modalhead"><h2>Update card payments</h2><button class="btn small" onclick="closeModal('ccRollModal')">Close</button></div>
+<div class="formgrid" style="margin-bottom:10px"><div><label>Use payments from</label><select id="ccRollMonth" class="input" onchange="openCcRoll(this.value)"></select></div></div>
+<div class="note" id="ccRollIntro"></div>
+<div style="overflow:auto;margin-top:12px"><table><thead><tr><th></th><th>Card bill</th><th class="money">Now</th><th>Paid that month</th><th class="money">New amount</th></tr></thead><tbody id="ccRollBody"></tbody></table></div>
+<div class="actions" style="margin-top:16px"><button class="btn primary" onclick="applyCcRoll()">Update checked bills</button><button class="btn" onclick="closeModal('ccRollModal')">Cancel</button></div></div></div>
 
 <div id="kpiModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="kpiModalTitle">Detail</h2><button class="btn small" onclick="closeModal('kpiModal')">Close</button></div><div id="kpiModalBody"></div></div></div>
 
@@ -487,7 +512,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v21'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v22'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -1160,7 +1185,8 @@ function importTransactions(ev){
       let category=pick(o,['Category'])||'Uncategorized', account=pick(o,['Account','Account Name'])||'', amount=parseAmount(pick(o,['Amount','Transaction Amount']));
       let hash=[ds,merchant,account,amount].join('|').toLowerCase();if(existing.has(hash))continue;existing.add(hash);state.transactions.push({id:uid(),date:ds,merchant,category,account,amount,statement:pick(o,['Original Statement','Description']),notes:pick(o,['Notes','Note']),hash});added++;
     }
-    save();runMatching();closeModal('txnImportModal');ev.target.value='';alert(`Imported ${added} new transaction${added===1?'':'s'}.`);renderAll();
+    state.lastTxnImport=new Date().toISOString();let _rn=0;try{if(typeof applyMerchantRenames==='function')_rn=applyMerchantRenames()}catch(e){}
+    save();runMatching();closeModal('txnImportModal');ev.target.value='';alert(`Imported ${added} new transaction${added===1?'':'s'}.`+(_rn?` Renamed ${_rn} merchant${_rn===1?'':'s'}.`:''));renderAll();
   };rd.readAsText(f);
 }
 
@@ -1221,7 +1247,7 @@ function runMatching(){
     let candidates=state.transactions.filter(t=>t.date>=start&&t.date<=end&&!usedTxnIds.has(t.id));
     let best=null,bestScore=-1;
     for(let t of candidates){
-      let m=t.merchant.toLowerCase(), exactAlias=aliases.some(x=>m===x), nameHit=aliases.some(x=>m.includes(x)||x.includes(m)), amt=Math.abs(Number(t.amount||0)), diff=Math.abs(amt-Number(a.amount||0));
+      let m=t.merchant.toLowerCase(), m0=String(t.origMerchant||'').toLowerCase(), exactAlias=aliases.some(x=>m===x||(m0&&m0===x)), nameHit=aliases.some(x=>m.includes(x)||x.includes(m)||(m0&&(m0.includes(x)||x.includes(m0)))), amt=Math.abs(Number(t.amount||0)), diff=Math.abs(amt-Number(a.amount||0));
       let amountHit=diff<=Math.max(tol,Math.abs(a.amount||0)*.035);
       let score=(exactAlias?5:(nameHit?3:0))+(amountHit?3:0)+(t.amount<0?1:0);
       if(score>bestScore&&score>=5){best=t;bestScore=score}
@@ -1691,7 +1717,7 @@ function renderSubs(){
   if($('sAttn')){$('sAttn').textContent=String(attn.length);$('sAttn').className='kpi-value '+(urgent?'bad':attn.length?'warn':'good')}
   if($('subsAttn'))$('subsAttn').innerHTML=attn.length?attn.map(({s,r})=>`<div class="attn">
       <div style="flex:1;min-width:220px"><strong>${esc(s.vendor)}</strong> <span class="muted" style="font-size:12px">${money(s.monthly)}/mo • ${esc(s.account)}</span> ${subOvPeek(s.key).decision?decPill(subOvPeek(s.key).decision):''}
-        ${r.map(x=>`<div class="why"><span class="dot ${x.lvl}"></span>${x.text}</div>`).join('')}</div>
+        ${r.map(x=>`<div class="why"><span class="dot ${x.lvl}"></span>${x.text}</div>`).join('')}${typeof subFacts==='function'?subFacts(s):''}</div>
       <div class="acts">${decButtons(s.key)}${r.some(x=>x.hideBtn)?`<button class="btn small" onclick="toggleIgnoreSub('${s.key}')">Hide</button>`:''}<button class="btn small" onclick="openSubModal('${s.key}')">Manage</button></div>
     </div>`).join(''):'<div class="note">Nothing needs attention right now. 🎉</div>';
   // by type
@@ -1708,6 +1734,7 @@ function renderSubs(){
   let list=subs.filter(s=>{const d=subOvPeek(s.key).decision||'';if(fDec==='none'?d:(fDec&&d!==fDec))return false;if(curType&&subType(s)!==curType)return false;return true});
   const nextKey=s=>s.cadence==='Multiple/mo'?'9999':s.next;
   if(sortBy==='next')list.sort((a,b)=>nextKey(a).localeCompare(nextKey(b)));
+  else if(sortBy==='last')list.sort((a,b)=>b.last.localeCompare(a.last));
   else if(sortBy==='name')list.sort((a,b)=>a.vendor.localeCompare(b.vendor));
   else if(sortBy==='type')list.sort((a,b)=>SUB_TYPES.indexOf(subType(a))-SUB_TYPES.indexOf(subType(b))||b.monthly-a.monthly);
   const row=s=>{
@@ -1720,14 +1747,15 @@ function renderSubs(){
       <td class="money ${s.priceUp?'bad':''}">${money(s.amount)}${s.priceUp?`<div class="muted" style="font-size:10px">was ${money(s.priorAmount)}</div>`:''}</td>
       <td>${esc(s.cadence)}</td>
       <td class="money">${money(s.monthly)}<div class="muted" style="font-size:10px">${money(s.monthly*12)}/yr</div></td>
+      <td>${lastChargeCell(s)}</td>
       <td>${nextLabel(s)}</td>
       <td>${decPill(o.decision)}</td>
       <td class="right" style="white-space:nowrap"><button class="btn small" onclick="openSubModal('${s.key}')">Manage</button> <button class="btn small" onclick="subToBill('${s.key}')">→ Bill</button> <button class="btn small danger" onclick="toggleIgnoreSub('${s.key}')">Hide</button></td>
     </tr>`};
   let html='';
-  if(!subs.length)html='<tr><td colspan="9" class="empty">Import transactions to detect subscriptions.</td></tr>';
-  else if(!list.length)html='<tr><td colspan="9" class="empty">No subscriptions match these filters.</td></tr>';
-  else if(sortBy==='type'){let cur=null;list.forEach(s=>{const t=subType(s);if(t!==cur){cur=t;const g=byType[t];html+=`<tr class="grouphead"><td colspan="5">${t} · ${g.n}</td><td class="money">${money(g.m)}</td><td colspan="3"></td></tr>`}html+=row(s)})}
+  if(!subs.length)html='<tr><td colspan="10" class="empty">Import transactions to detect subscriptions.</td></tr>';
+  else if(!list.length)html='<tr><td colspan="10" class="empty">No subscriptions match these filters.</td></tr>';
+  else if(sortBy==='type'){let cur=null;list.forEach(s=>{const t=subType(s);if(t!==cur){cur=t;const g=byType[t];html+=`<tr class="grouphead"><td colspan="5">${t} · ${g.n}</td><td class="money">${money(g.m)}</td><td colspan="4"></td></tr>`}html+=row(s)})}
   else html=list.map(row).join('');
   $('subsBody').innerHTML=html;
 }
@@ -2705,6 +2733,335 @@ function renderSubReview(){
 const _renderSubsBase=renderSubs;
 renderSubs=function(){_renderSubsBase();try{renderSubReview()}catch(e){console.warn('subReview',e)}};
 
+
+
+/* ============================================================
+   v22 additions (Oct 2026)
+   - Monthly card-payment update: sets each credit card bill to what
+     you actually paid on it last month (preview first, you approve).
+   - Home: Subscriptions card sits below Bills; hover/tap the totals
+     for the list behind each number.
+   - Subscriptions: last charge date + amount; richer Needs attention.
+   - Price-increase, stale-import and card-update banners on Home.
+   - Merchant renames (e.g. Deuscom → The Blowers), applied on import.
+   - Card balance trend by month on the Payoff Planner.
+   - Automatic backup before every CSV import (last 3 kept).
+   ============================================================ */
+function shortDate(d){return d?fmtDate(d).replace(/, \d{4}/,''):'—'}
+function monthLabel(mk){const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,15,12).toLocaleDateString('en-US',{month:'long',year:'numeric'})}
+function monthShort(mk){const [y,m]=mk.split('-').map(Number);return new Date(y,m-1,15,12).toLocaleDateString('en-US',{month:'short'})}
+function prevMonthKey(ref){const d=new Date((ref||today())+'T12:00:00');const p=new Date(d.getFullYear(),d.getMonth()-1,15,12);return p.getFullYear()+'-'+String(p.getMonth()+1).padStart(2,'0')}
+function monthEnd(mk){const [y,m]=mk.split('-').map(Number);const d=new Date(y,m,0,12);return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')}
+function daysBetween(a,b){return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/86400000)}
+function agoText(d){const n=daysBetween(d,today());return n<=0?'today':n===1?'yesterday':`${n} days ago`}
+
+/* ---------- v22 migration ---------- */
+function migrateV22(){
+  let changed=false;
+  if(!Array.isArray(state.merchantRenames)){state.merchantRenames=[];changed=true}
+  if(!state._seededRenamesV22){
+    if(!state.merchantRenames.some(r=>norm(r.from)==='deuscom'))state.merchantRenames.push({from:'Deuscom',to:'The Blowers'});
+    state._seededRenamesV22=true;changed=true;
+    try{applyMerchantRenames()}catch(e){}
+  }
+  if(!Array.isArray(state.ccRollLog)){state.ccRollLog=[];changed=true}
+  state.bills.forEach(b=>{if(b.isCard===undefined){b.isCard='auto';changed=true}});
+  if(changed)save();
+}
+
+/* ---------- 1. monthly card-payment update ---------- */
+const CC_BILL_RE=/\b(card|credit|amex|american express|discover|capital one|quicksilver|visa|mastercard|platinum|blue cash|skymiles|boa cc|cc)\b/i;
+function isCardBill(b){
+  if(!b)return false;
+  if(b.isCard==='yes')return true;if(b.isCard==='no')return false;
+  if(/car payment|car wash|carwash/i.test(b.name))return false;
+  return CC_BILL_RE.test(b.name)||CC_BILL_RE.test(String(b.aliases||''));
+}
+function billAliasList(b){return [b.name,...String(b.aliases||'').split(',')].map(norm).filter(Boolean)}
+function cardPaymentsInMonth(b,mk,byId){
+  const out=[],seen=new Set();
+  state.assignments.filter(a=>a.billId===b.id&&a.matchedTxnId).forEach(a=>{
+    const t=byId.get(a.matchedTxnId);
+    if(t&&monthKey(t.date)===mk&&!seen.has(t.id)){seen.add(t.id);out.push({date:t.date,amount:Math.abs(Number(t.amount)),merchant:t.merchant,how:'matched'})}
+  });
+  if(out.length)return out.sort((x,y)=>x.date.localeCompare(y.date));
+  // Fallback: transactions in that month whose merchant matches an alias that belongs ONLY to this bill
+  // (shared aliases like "american express" are skipped so one Amex payment can't be counted for three cards).
+  const others=state.bills.filter(x=>x.id!==b.id).map(billAliasList);
+  const mine=billAliasList(b).filter(a=>a.length>=4&&!others.some(o=>o.includes(a)));
+  if(!mine.length)return out;
+  state.transactions.forEach(t=>{
+    if(monthKey(t.date)!==mk||Number(t.amount)>=0)return;
+    const m=norm(t.merchant),m2=norm(t.origMerchant||'');
+    if(mine.some(a=>m===a||m.includes(a)||(m2&&(m2===a||m2.includes(a)))))out.push({date:t.date,amount:Math.abs(Number(t.amount)),merchant:t.merchant,how:'alias'});
+  });
+  return out.sort((x,y)=>x.date.localeCompare(y.date));
+}
+let _ccRollRows=[],_ccRollMonth='';
+function ccRollRows(mk){
+  const byId=new Map(state.transactions.map(t=>[t.id,t]));
+  return state.bills.filter(isCardBill).map(b=>{
+    const pays=cardPaymentsInMonth(b,mk,byId);
+    const total=pays.reduce((s,p)=>s+p.amount,0);
+    return {b,pays,total:Math.round(total*100)/100,cur:Number(b.amount||0)};
+  });
+}
+function openCcRoll(mk){
+  _ccRollMonth=mk||($('ccRollMonth')&&$('ccRollMonth').value)||prevMonthKey(today());
+  _ccRollRows=ccRollRows(_ccRollMonth);
+  const sel=$('ccRollMonth');
+  if(sel){
+    const opts=[];for(let i=1;i<=6;i++){const d=new Date();const p=new Date(d.getFullYear(),d.getMonth()-i,15,12);const k=p.getFullYear()+'-'+String(p.getMonth()+1).padStart(2,'0');opts.push(k)}
+    sel.innerHTML=opts.map(k=>`<option value="${k}" ${k===_ccRollMonth?'selected':''}>${monthLabel(k)}</option>`).join('');
+  }
+  const found=_ccRollRows.filter(r=>r.pays.length).length;
+  $('ccRollIntro').innerHTML=`Each credit card bill below is set to what you actually paid on it in <strong>${monthLabel(_ccRollMonth)}</strong>. Payments come from the transactions matched to that bill (or, if none were matched, from transactions whose merchant matches that bill's own aliases). When a card had more than one payment in the month, the <strong>total</strong> is used — type a different amount if you'd rather.<br>Found payments for ${found} of ${_ccRollRows.length} card bills. Unpaid amounts in this and future pay cycles update too, unless you've overridden them for a cycle.`;
+  $('ccRollBody').innerHTML=_ccRollRows.length?_ccRollRows.map((r,i)=>{
+    const diff=r.pays.length&&Math.abs(r.total-r.cur)>=0.01;
+    const list=r.pays.length?r.pays.map(p=>`${shortDate(p.date)} ${money(p.amount)}${p.how==='alias'?' <span class="muted">(by name)</span>':''}`).join('<br>'):'<span class="warn">No payment found</span>';
+    const delta=r.pays.length?`<div style="font-size:10px" class="${r.total>r.cur?'warn':r.total<r.cur?'good':'muted'}">${diff?(r.total>r.cur?'+':'')+money(r.total-r.cur):'no change'}</div>`:'';
+    return `<tr><td><input type="checkbox" id="ccRollChk${i}" ${diff?'checked':''}></td><td><strong>${esc(r.b.name)}</strong><div class="muted" style="font-size:10px">due day ${esc(r.b.due)}</div></td><td class="money">${money(r.cur)}</td><td style="font-size:12px">${list}</td><td class="money"><input id="ccRollAmt${i}" class="input moneyin" style="width:110px;text-align:right" type="number" step=".01" value="${(r.pays.length?r.total:r.cur).toFixed(2)}" oninput="document.getElementById('ccRollChk${i}').checked=true">${delta}</td></tr>`;
+  }).join(''):'<tr><td colspan="5" class="empty">No credit card bills found. Edit a bill and set “Credit card payment?” to Yes.</td></tr>';
+  openModal('ccRollModal');
+}
+function applyCcRoll(){
+  const c=currentCycle(),fromDate=c?c.date:today();
+  const changes=[];
+  _ccRollRows.forEach((r,i)=>{
+    if(!$('ccRollChk'+i)||!$('ccRollChk'+i).checked)return;
+    const amt=Math.round(Number($('ccRollAmt'+i).value||0)*100)/100;if(!(amt>=0))return;
+    const old=Number(r.b.amount||0);
+    if(Math.abs(amt-old)<0.005)return;
+    r.b.amount=amt;
+    let cyclesUpdated=0;
+    state.assignments.filter(a=>a.billId===r.b.id&&!a.paid).forEach(a=>{
+      const cy=state.cycles.find(x=>x.id===a.cycleId);
+      if(!cy||cy.date<fromDate)return;
+      if(Math.abs(Number(a.amount||0)-old)<0.005){a.amount=amt;cyclesUpdated++}
+    });
+    changes.push({bill:r.b.name,from:old,to:amt,cycles:cyclesUpdated});
+  });
+  state.ccRollLog=state.ccRollLog||[];
+  state.ccRollLog.unshift({date:today(),month:_ccRollMonth,changes});
+  state.ccRollLog=state.ccRollLog.slice(0,24);
+  state.settings.ccRolledMonth=monthKey(today());
+  save();closeModal('ccRollModal');renderAll();
+  alert(changes.length?`Updated ${changes.length} card bill${changes.length===1?'':'s'}:\n\n`+changes.map(x=>`${x.bill}: ${money(x.from)} → ${money(x.to)}`).join('\n'):'Nothing changed — every card bill already matched last month.');
+}
+function dismissCcRoll(){state.settings.ccRolledMonth=monthKey(today());save();renderAll()}
+
+/* ---------- 3. hover / tap detail on the subscription totals ---------- */
+function cycleSubBuckets(){
+  const c=currentCycle();if(!c||!state.transactions.length)return null;
+  const subs=detectSubs(),idx=subBillIndex(subs),list=subsInCycle(c,subs);
+  const cs=state.assignments.filter(a=>a.cycleId===c.id);
+  const B={total:[],charged:[],upcoming:[],uncounted:[]};
+  list.forEach(r=>{
+    const s=r.s,onCard=subOnCard(s),bill=idx.billForSub(s),inCycle=bill&&cs.some(a=>a.billId===bill.id);
+    const base={name:s.vendor,acct:s.account,date:r.status==='ongoing'?'several':shortDate(r.date),status:r.status,onCard,inCycle};
+    B.total.push({...base,amt:r.amount});
+    if(r.charged>0.004)B.charged.push({...base,amt:r.charged});
+    const rem=Math.max(0,r.amount-r.charged);
+    if(rem>0.004)B.upcoming.push({...base,amt:rem});
+    if(!onCard&&!inCycle&&r.status!=='charged'&&rem>0.004)B.uncounted.push({...base,amt:rem});
+  });
+  return B;
+}
+const POP_TITLE={total:'Expected this pay period',charged:'Charged so far',upcoming:'Still to come',uncounted:'From cash, not a Bill'};
+const POP_NOTE={total:'Every subscription due between this payday and the next.',charged:'Already posted to your accounts this pay period.',upcoming:'Expected but not charged yet. Late ones are marked.',uncounted:"Coming out of a cash account but not set up as a Bill, so Safe to spend isn't holding money back for them. Use “→ Bill” on the Subscriptions tab to fix."};
+let _popKind=null,_popPinned=false;
+function popHTML(kind){
+  const B=cycleSubBuckets();const rows=B?B[kind]:[];
+  const total=rows.reduce((s,r)=>s+r.amt,0);
+  const tag=r=>r.status==='late'?' <span class="pill alert">late</span>':r.status==='ongoing'?' <span class="muted">~</span>':'';
+  return `<div class="pophead"><strong>${POP_TITLE[kind]}</strong><span>${money(total)}</span></div>
+  ${rows.length?`<table><tbody>${rows.sort((a,b)=>b.amt-a.amt).map(r=>`<tr><td><strong>${esc(r.name)}</strong>${tag(r)}<div class="muted" style="font-size:10px">${esc(r.acct)}${kind!=='uncounted'?(r.inCycle?' · in Bills':r.onCard?' · on a card':' · cash, not a Bill'):''}</div></td><td style="white-space:nowrap">${r.date}</td><td class="money">${money(r.amt)}</td></tr>`).join('')}</tbody></table>`:'<div class="muted" style="padding:6px 0">Nothing here this pay period.</div>'}
+  <div class="muted" style="font-size:11px;margin-top:6px">${POP_NOTE[kind]}</div>`;
+}
+function showPop(el,pin){
+  const pop=$('ccPop');if(!pop)return;
+  _popKind=el.dataset.pop;_popPinned=!!pin;
+  pop.innerHTML=popHTML(_popKind);pop.style.display='block';
+  const r=el.getBoundingClientRect(),pw=Math.min(360,window.innerWidth-24);
+  pop.style.width=pw+'px';
+  let left=Math.min(Math.max(12,r.left),window.innerWidth-pw-12);
+  let top=r.bottom+8;
+  pop.style.left=left+'px';pop.style.top=top+'px';
+  const ph=pop.offsetHeight;
+  if(top+ph>window.innerHeight-8&&r.top-ph-8>8)pop.style.top=(r.top-ph-8)+'px';
+}
+function hidePop(){const pop=$('ccPop');if(pop)pop.style.display='none';_popKind=null;_popPinned=false}
+(function bindPop(){
+  if(!$('ccPop')){const d=document.createElement('div');d.id='ccPop';d.className='ccpop';document.body.appendChild(d)}
+  const canHover=window.matchMedia&&window.matchMedia('(hover:hover)').matches;
+  document.addEventListener('mouseover',e=>{if(!canHover)return;const el=e.target.closest&&e.target.closest('[data-pop]');if(el&&!_popPinned)showPop(el,false)});
+  document.addEventListener('mouseout',e=>{if(!canHover||_popPinned)return;const el=e.target.closest&&e.target.closest('[data-pop]');if(el&&!(e.relatedTarget&&el.contains(e.relatedTarget)))hidePop()});
+  document.addEventListener('click',e=>{
+    const el=e.target.closest&&e.target.closest('[data-pop]');
+    if(el){if(_popPinned&&_popKind===el.dataset.pop)hidePop();else showPop(el,true);return}
+    if(!(e.target.closest&&e.target.closest('#ccPop')))hidePop();
+  });
+  window.addEventListener('scroll',()=>{if(!_popKind)return;const el=document.querySelector(`[data-pop="${_popKind}"]`);if(!el)return hidePop();const r=el.getBoundingClientRect();if(r.bottom<0||r.top>window.innerHeight)hidePop();else showPop(el,_popPinned)},{passive:true});
+})();
+
+/* ---------- 4/5. last charge + richer Needs attention ---------- */
+function lastChargeCell(s){
+  const t=s.rows.at(-1);
+  return `${shortDate(s.last)}<div class="muted" style="font-size:10px">${money(Math.abs(Number(t.amount)))} · ${agoText(s.last)}</div>`;
+}
+function subFacts(s){
+  const t=s.rows.at(-1),ci=subCardInfo(s);
+  const next=s.cadence==='Multiple/mo'?'several times a month':`${shortDate(s.next)} (${(()=>{const du=daysUntil(s.next);return du<0?`${-du}d overdue`:du===0?'today':`in ${du}d`})()})`;
+  const total=s.rows.reduce((a,r)=>a+Math.abs(Number(r.amount)),0);
+  let billTxt='';try{const b=subBillIndex().billForSub(s);billTxt=b?` · set up as Bill “${esc(b.name)}”`:''}catch(e){}
+  return `<div class="attnfacts">
+    <span><b>${money(s.amount)}</b> ${esc(s.cadence.toLowerCase())} · ${money(s.monthly*12)}/yr</span>
+    <span>Last charged <b>${shortDate(s.last)}</b> for <b>${money(Math.abs(Number(t.amount)))}</b> (${agoText(s.last)})</span>
+    <span>Next: ${next}</span>
+    <span>Paid with ${esc(s.account)}${ci&&ci.apr?` (${ci.apr}% APR)`:''}${billTxt}</span>
+    <span>${subType(s)} · ${s.rows.length} charge${s.rows.length===1?'':'s'} since ${shortDate(s.rows[0].date)} · ${money(total)} total</span>
+  </div>
+  <div class="attnhist">Recent: ${s.rows.slice(-4).reverse().map(r=>`${shortDate(r.date)} ${money(Math.abs(Number(r.amount)))}`).join(' · ')}</div>`;
+}
+
+/* ---------- extra 1/2/3: Home banners (card update, stale import, price increases) ---------- */
+function renderV22Banners(){
+  // card payments: once per month
+  const cb=$('ccRollBanner');
+  if(cb){
+    const mk=monthKey(today()),done=state.settings.ccRolledMonth===mk,hasCards=state.bills.some(isCardBill);
+    if(!done&&hasCards&&state.transactions.length){
+      cb.style.display='';
+      cb.innerHTML=`<div class="alertrow warn" style="margin:0"><div><strong>💳 New month: update your card payments</strong><div class="muted" style="font-size:12px">Set each credit card bill to what you paid on it in ${monthLabel(prevMonthKey(today()))}. You'll see every change before it's saved.</div></div><div class="actions"><button class="btn small primary" onclick="openCcRoll()">Review</button><button class="btn small" onclick="dismissCcRoll()">Not this month</button></div></div>`;
+    }else{cb.style.display='none';cb.innerHTML=''}
+  }
+  // stale data
+  const sb_=$('staleBanner');
+  if(sb_){
+    let newest='';for(const t of state.transactions)if(t.date>newest)newest=t.date;
+    const imp=state.lastTxnImport?String(state.lastTxnImport).slice(0,10):'';
+    const ref=imp||newest;
+    const balAge=state.lastBalanceImport?daysBetween(String(state.lastBalanceImport).slice(0,10),today()):null;
+    const txAge=ref?daysBetween(ref,today()):null;
+    const parts=[];
+    if(txAge!==null&&txAge>7)parts.push(`transactions ${imp?'last imported':'end'} ${shortDate(ref)} (${txAge} days ago)`);
+    if(balAge!==null&&balAge>7)parts.push(`balances last imported ${shortDate(String(state.lastBalanceImport).slice(0,10))} (${balAge} days ago)`);
+    if(parts.length&&state.transactions.length){
+      sb_.style.display='';
+      sb_.innerHTML=`<div class="alertrow ${Math.max(txAge||0,balAge||0)>14?'bad':'warn'}" style="margin:0"><div><strong>📥 Your Monarch data is getting old</strong><div class="muted" style="font-size:12px">${parts.join(' · ')}${newest?` · newest transaction ${shortDate(newest)}`:''}. Safe to spend is only as current as your last import.</div></div><div class="actions"><button class="btn small" onclick="openTxnImport()">Import transactions</button><button class="btn small" onclick="openBalanceImport()">Import balances</button></div></div>`;
+    }else{sb_.style.display='none';sb_.innerHTML=''}
+  }
+  // price increases
+  const pb=$('priceUpBanner');
+  if(pb){
+    let ups=[];try{ups=detectSubs().filter(s=>{const o=subOvPeek(s.key);return s.priceUp&&!(o.decision==='keep'&&(o.decidedOn||'')>=s.last)&&o.decision!=='cancel'})}catch(e){}
+    if(ups.length){
+      const per=s=>s.cadence==='Annual/irregular'?1:12;
+      const yr=ups.reduce((a,s)=>a+(s.amount-s.priorAmount)*per(s),0);
+      pb.style.display='';
+      pb.innerHTML=`<div class="alertrow bad" style="margin:0"><div><strong>💲 ${ups.length} subscription price increase${ups.length===1?'':'s'} (+${money(yr)}/yr)</strong><div class="muted" style="font-size:12px">${ups.slice(0,4).map(s=>`${esc(s.vendor)} ${money(s.priorAmount)} → ${money(s.amount)}`).join(' · ')}${ups.length>4?' · …':''}. Mark Keep to clear it, or Cancel.</div></div><button class="btn small" onclick="showTab('subs')">Review</button></div>`;
+    }else{pb.style.display='none';pb.innerHTML=''}
+  }
+}
+
+/* ---------- extra 4: merchant renames ---------- */
+function applyMerchantRenames(txns){
+  const rules=(state.merchantRenames||[]).filter(r=>r&&r.from&&r.to).map(r=>({f:norm(r.from),to:String(r.to).trim()}));
+  let n=0;if(!rules.length)return 0;
+  (txns||state.transactions).forEach(t=>{
+    const src=norm(t.origMerchant||t.merchant);
+    const r=rules.find(r=>src===r.f||src.includes(r.f));
+    if(r){if(t.merchant!==r.to){if(!t.origMerchant)t.origMerchant=t.merchant;t.merchant=r.to;n++}}
+    else if(t.origMerchant&&t.merchant!==t.origMerchant){t.merchant=t.origMerchant;delete t.origMerchant;n++}
+  });
+  return n;
+}
+function renderRenames(){
+  const el=$('renameBody');if(!el)return;
+  const list=state.merchantRenames||[];
+  el.innerHTML=(list.length?list.map((r,i)=>`<tr><td><input class="input" id="rnFrom${i}" value="${esc(r.from)}"></td><td><input class="input" id="rnTo${i}" value="${esc(r.to)}"></td><td class="right"><button class="btn small danger" onclick="removeRename(${i})">Remove</button></td></tr>`).join(''):'<tr><td colspan="3" class="empty">No renames yet.</td></tr>')+
+    `<tr><td><input class="input" id="rnFromNew" placeholder="As it appears in Monarch"></td><td><input class="input" id="rnToNew" placeholder="What to call it"></td><td class="right"><button class="btn small" onclick="addRename()">Add</button></td></tr>`;
+}
+function readRenames(){(state.merchantRenames||[]).forEach((r,i)=>{if($('rnFrom'+i)){r.from=$('rnFrom'+i).value.trim();r.to=$('rnTo'+i).value.trim()}});state.merchantRenames=state.merchantRenames.filter(r=>r.from&&r.to)}
+function addRename(){readRenames();const f=$('rnFromNew').value.trim(),t=$('rnToNew').value.trim();if(!f||!t)return alert('Fill in both names.');state.merchantRenames.push({from:f,to:t});saveRenames()}
+function removeRename(i){readRenames();state.merchantRenames.splice(i,1);saveRenames()}
+function saveRenames(){readRenames();const n=applyMerchantRenames();save();runMatching();renderAll();if(n)alert(`Updated ${n} transaction${n===1?'':'s'}.`)}
+
+/* ---------- extra 5: card balance trend (Payoff Planner) ---------- */
+function renderCardTrend(){
+  const el=$('poTrend');if(!el)return;
+  let rows=[];try{rows=cardRows().filter(r=>r.known||r.bal>0.5)}catch(e){}
+  const mks=[];for(let i=3;i>=1;i--){const d=new Date();const p=new Date(d.getFullYear(),d.getMonth()-i,15,12);mks.push(p.getFullYear()+'-'+String(p.getMonth()+1).padStart(2,'0'))}
+  const at=(r,mk)=>{if(!r.h||!r.h.length)return null;const v=balAsOf(r.h,monthEnd(mk));return v===null?null:Math.abs(v)};
+  if(!rows.length){el.innerHTML='<div class="empty">Import a Balances CSV to see month-by-month card balances.</div>';return}
+  const data=rows.map(r=>({r,vals:mks.map(mk=>at(r,mk)),now:r.bal}));
+  const tot=mks.map((_,i)=>data.reduce((s,d)=>s+(d.vals[i]||0),0)),totNow=data.reduce((s,d)=>s+d.now,0);
+  const chg=(a,b)=>a===null||b===null?'<span class="muted">—</span>':delta(b-a,true);
+  const spark=vals=>{const v=vals.filter(x=>x!==null);if(v.length<2)return '';const mx=Math.max(...v,1),w=70,h=20;const pts=vals.map((x,i)=>x===null?null:[(i/(vals.length-1))*w,h-(x/mx)*h]).filter(Boolean);return `<svg width="${w}" height="${h+2}" viewBox="0 -1 ${w} ${h+2}" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.6" points="${pts.map(p=>p.map(n=>n.toFixed(1)).join(',')).join(' ')}"/></svg>`};
+  el.innerHTML=`<table><thead><tr><th>Card</th>${mks.map(mk=>`<th class="money">End of ${monthShort(mk)}</th>`).join('')}<th class="money">Now</th><th class="money">vs last month</th><th class="money">vs 3 months</th><th>Trend</th></tr></thead><tbody>${data.map(d=>{const last=d.vals[d.vals.length-1],first=d.vals[0];const down=last!==null&&d.now<last-0.5;return `<tr><td><strong>${esc(d.r.name)}</strong></td>${d.vals.map(v=>`<td class="money">${v===null?'<span class="muted">—</span>':money(v)}</td>`).join('')}<td class="money"><strong>${money(d.now)}</strong></td><td class="money">${chg(last,d.now)}</td><td class="money">${chg(first,d.now)}</td><td class="${down?'good':'muted'}">${spark([...d.vals,d.now])}</td></tr>`}).join('')}</tbody>
+  <tfoot><tr><td><strong>Total</strong></td>${tot.map(v=>`<td class="money"><strong>${money(v)}</strong></td>`).join('')}<td class="money"><strong>${money(totNow)}</strong></td><td class="money">${delta(totNow-tot[tot.length-1],true)}</td><td class="money">${delta(totNow-tot[0],true)}</td><td></td></tr></tfoot></table>
+  <div class="note" style="margin-top:10px">Month-end balances come from your Balances CSV history. Green means the balance went down. A dash means there's no balance on file for that month yet.</div>`;
+}
+
+/* ---------- extra 6: automatic backup before each import ---------- */
+const SNAP_KEY='snapshots',SNAP_MAX=3;
+function idbGetKey(k){return idbOpen().then(db=>new Promise((res,rej)=>{const r=db.transaction(IDB_STORE,'readonly').objectStore(IDB_STORE).get(k);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)}))}
+function idbSetKey(k,v){return idbOpen().then(db=>new Promise((res,rej)=>{const tx=db.transaction(IDB_STORE,'readwrite');tx.objectStore(IDB_STORE).put(v,k);tx.oncomplete=()=>res();tx.onerror=()=>rej(tx.error)}))}
+async function snapshotState(label){
+  try{
+    const list=(await idbGetKey(SNAP_KEY))||[];
+    const data=JSON.stringify(state);
+    list.unshift({at:new Date().toISOString(),label,txns:(state.transactions||[]).length,size:data.length,data});
+    while(list.length>SNAP_MAX)list.pop();
+    await idbSetKey(SNAP_KEY,list);
+  }catch(e){console.warn('snapshot failed',e)}
+  renderSnapshots();
+}
+async function renderSnapshots(){
+  const el=$('snapBody');if(!el)return;
+  let list=[];try{list=(await idbGetKey(SNAP_KEY))||[]}catch(e){}
+  el.innerHTML=list.length?`<table><thead><tr><th>Saved</th><th>Why</th><th class="money">Transactions</th><th></th></tr></thead><tbody>${list.map((s,i)=>`<tr><td>${new Date(s.at).toLocaleString('en-US',{month:'short',day:'numeric',hour:'numeric',minute:'2-digit'})}</td><td>${esc(s.label)}</td><td class="money">${Number(s.txns||0).toLocaleString()}</td><td class="right" style="white-space:nowrap"><button class="btn small" onclick="downloadSnapshot(${i})">Download</button> <button class="btn small danger" onclick="restoreSnapshot(${i})">Restore</button></td></tr>`).join('')}</tbody></table>`:'<div class="empty">No automatic backups yet. One is saved right before every CSV import.</div>';
+}
+async function downloadSnapshot(i){const list=(await idbGetKey(SNAP_KEY))||[];const s=list[i];if(!s)return;const blob=new Blob([s.data],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='claudia-cash-backup-'+s.at.slice(0,16).replace(/[:T]/g,'-')+'.json';a.click();URL.revokeObjectURL(a.href)}
+async function restoreSnapshot(i){
+  const list=(await idbGetKey(SNAP_KEY))||[];const s=list[i];if(!s)return;
+  if(!confirm(`Restore the backup from ${new Date(s.at).toLocaleString()} (${s.label})?\n\nEverything since then — including the import that followed — will be undone.`))return;
+  await snapshotState('Before restoring a backup');
+  state=normalizeState(JSON.parse(s.data));ensureAssignments();if(typeof migrate==='function')migrate();save();renderAll();
+  alert('Backup restored.'+(currentUser?' Syncing to the cloud now.':''));
+}
+function backupNow(){snapshotState('Manual backup').then(()=>alert('Backup saved on this device.'))}
+// wrap both CSV importers so a backup is taken first
+const _v22ImportTxns=importTransactions,_v22ImportBals=importBalances;
+importTransactions=function(ev){const f=ev&&ev.target&&ev.target.files&&ev.target.files[0];if(!f)return _v22ImportTxns(ev);snapshotState('Before importing '+f.name).finally(()=>_v22ImportTxns(ev))};
+importBalances=function(ev){const f=ev&&ev.target&&ev.target.files&&ev.target.files[0];if(!f)return _v22ImportBals(ev);snapshotState('Before importing '+f.name).finally(()=>_v22ImportBals(ev))};
+
+/* ---------- settings card + bill modal hooks ---------- */
+function renderCcRollSettings(){
+  const el=$('ccRollSettings');if(!el)return;
+  const log=state.ccRollLog||[];
+  el.innerHTML=`<div class="sub" style="margin-bottom:10px">${state.settings.ccRolledMonth===monthKey(today())?`Done for ${monthLabel(monthKey(today()))}.`:`Not done yet for ${monthLabel(monthKey(today()))}.`} Card bills detected: ${state.bills.filter(isCardBill).map(b=>esc(b.name)).join(', ')||'none'}.</div>
+  <div class="actions"><button class="btn primary" onclick="openCcRoll()">Update card payments</button></div>
+  ${log.length?`<div style="overflow:auto;margin-top:12px"><table><thead><tr><th>Date</th><th>Based on</th><th>Changes</th></tr></thead><tbody>${log.slice(0,6).map(l=>`<tr><td>${shortDate(l.date)}</td><td>${monthLabel(l.month)}</td><td style="font-size:12px">${l.changes.length?l.changes.map(c=>`${esc(c.bill)} ${money(c.from)} → ${money(c.to)}`).join('<br>'):'<span class="muted">no changes</span>'}</td></tr>`).join('')}</tbody></table></div>`:''}`;
+}
+const _v22OpenBill=openBillModal,_v22EditBill=editBill,_v22SaveBill=saveBill;
+openBillModal=function(){_v22OpenBill();if($('billIsCard'))$('billIsCard').value='auto'};
+editBill=function(id){_v22EditBill(id);const b=state.bills.find(x=>x.id===id);if($('billIsCard'))$('billIsCard').value=(b&&b.isCard)||'auto'};
+saveBill=function(){const editing=$('billEditId').value,v=$('billIsCard')?$('billIsCard').value:'auto';_v22SaveBill();const b=editing?state.bills.find(x=>x.id===editing):state.bills.at(-1);if(b){b.isCard=v;save();renderAll()}};
+
+/* ---------- hook everything into render ---------- */
+const _v22RenderAll=renderAll;
+renderAll=function(){
+  _v22RenderAll();
+  try{renderV22Banners()}catch(e){console.warn('v22 banners',e)}
+  try{renderRenames()}catch(e){console.warn('renames',e)}
+  try{renderCardTrend()}catch(e){console.warn('trend',e)}
+  try{renderCcRollSettings()}catch(e){console.warn('ccroll',e)}
+  try{renderSnapshots()}catch(e){}
+  try{if(_popKind&&_popPinned){const el=document.querySelector(`[data-pop="${_popKind}"]`);if(el)showPop(el,true)}}catch(e){}
+};
+const _v22BootWithState=bootWithState;
+bootWithState=function(s){state=normalizeState(s);migrateV22();_v22BootWithState(state)};
 
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
