@@ -528,7 +528,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v24'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v25'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -3469,6 +3469,625 @@ const _v24RenderAll=renderAll;
 renderAll=function(){_v24RenderAll();try{renderAppleCard()}catch(e){console.warn('apple',e)}};
 const _v24RenderSubs=renderSubs;
 renderSubs=function(){_v24RenderSubs();try{renderAppleCard()}catch(e){console.warn('apple',e)}};
+
+
+/* ============================================================
+   v25
+   1. Cards can follow more than one account name (reissued card numbers).
+      A card whose balance has gone flat while a same-named account is still
+      active gets a one-tap "use this account" fix. Txns opens every number.
+   2. Accounts page lists every account: cash, credit cards, and everything
+      else in your balances and transactions.
+   3. Bill matching only marks a bill paid when the transaction is near that
+      bill's due date in that cycle, is money going out, and the amount fits.
+      Near misses become "possible matches" you confirm instead of auto-paid.
+   4. Dashboard bills: tap a bill to see the transaction it matched.
+      Bills tab: Last paid column, tap for the payment history.
+   5. Left to be paid includes subscriptions coming out of cash that aren't
+      Bills. Card subscriptions are shown as a note but not counted.
+   ============================================================ */
+
+/* ---------- shared helpers ---------- */
+function v25Days(a,b){return Math.round((new Date(b+'T12:00:00')-new Date(a+'T12:00:00'))/86400000)}
+function v25Sig(name){return norm(name).replace(/\d+/g,'#')}
+function cardNames(c){
+  if(!c)return [];
+  const out=[c.match||c.name,...(Array.isArray(c.alsoMatch)?c.alsoMatch:[])].map(x=>String(x||'').trim()).filter(Boolean);
+  return [...new Set(out)];
+}
+function v25CardNameSet(){
+  const s=new Set();
+  (state.cards||[]).forEach(c=>{s.add(norm(c.name));cardNames(c).forEach(n=>s.add(norm(n)))});
+  return s;
+}
+const V25_CARD_ACCT_RE=/card|credit|platinum|quicksilver|discover|skymiles|blue cash|amex|american express|visa|mastercard|signature|rewards/i;
+function isCardAcctName(name){
+  if(!name)return false;
+  const a=acctForTxnName(name);
+  if(a)return !a.include&&!/checking|savings/i.test(a.type||'');
+  return v25CardNameSet().has(norm(name))||V25_CARD_ACCT_RE.test(name);
+}
+function v25TxnsFor(names){
+  const set=new Set(names.map(norm));
+  return state.transactions.filter(t=>set.has(norm(t.account)));
+}
+function v25LastTxn(names){
+  let best=null;v25TxnsFor(names).forEach(t=>{if(!best||t.date>best.date)best=t});return best;
+}
+function v25LastChange(h){
+  if(!h||!h.length)return null;
+  const cur=h.at(-1)[1];
+  for(let i=h.length-2;i>=0;i--){if(Math.abs(h[i][1]-cur)>0.005)return h[i+1][0]}
+  return h[0][0];
+}
+
+/* ---------- memo: subscriptions are detected once per render, not once per cycle ---------- */
+let _v25SubsMemo=null;
+const _v25DetectSubs=detectSubs;
+detectSubs=function(all){
+  if(all)return _v25DetectSubs(all);
+  if(!_v25SubsMemo)_v25SubsMemo=_v25DetectSubs();
+  return _v25SubsMemo;
+};
+function v25ResetMemo(){_v25SubsMemo=null;_v25CycleSubs={}}
+const _v25Save=save;
+save=function(){v25ResetMemo();return _v25Save.apply(this,arguments)};
+
+/* ============================================================
+   1. credit cards with more than one account name
+   ============================================================ */
+cardTxnStats=function(names){
+  const since=daysAgo(180),list=(Array.isArray(names)?names:[names]).map(norm).filter(Boolean);
+  const rows=state.transactions.filter(t=>{if(t.date<since)return false;const a=norm(t.account);return list.some(n=>a===n||a.includes(n)||n.includes(a))});
+  const months=Math.max(1,new Set(rows.map(t=>t.date.slice(0,7))).size);
+  const interest=rows.filter(t=>/interest/i.test(t.category)&&Number(t.amount)<0).reduce((s,t)=>s+Math.abs(t.amount),0);
+  const pay=rows.filter(t=>Number(t.amount)>0&&/payment/i.test(t.category)).reduce((s,t)=>s+Number(t.amount),0);
+  return {interestMo:interest/months,payMo:pay/months,months,n:rows.length};
+};
+// another account with the same name pattern ("Card (...####)") that is still active while this card's source has gone flat
+function v25TwinFor(c,h,s){
+  const primary=c.match||c.name,sig=v25Sig(primary);
+  if(!/#/.test(sig))return null;
+  const flat=!h.length||(s&&s.d30===0);
+  if(!flat)return null;
+  const own=v25LastTxn([primary]);
+  if(own&&own.date>=daysAgo(30))return null;
+  const claimed=new Set();
+  (state.cards||[]).forEach(o=>{if(o.id!==c.id){claimed.add(norm(o.name));cardNames(o).forEach(n=>claimed.add(norm(n)))}});
+  const names=new Set([...Object.keys(state.balHist||{}),...txnAccountNames()]);
+  let best=null;
+  names.forEach(k=>{
+    if(norm(k)===norm(primary)||claimed.has(norm(k))||v25Sig(k)!==sig)return;
+    const hh=histFor(k),ss=hh.length?changeStats(hh):null,lt=v25LastTxn([k]);
+    const moved=ss&&ss.d30!==null&&Math.abs(ss.d30)>0.005;
+    const recentTxn=lt&&lt.date>=daysAgo(45);
+    if(!moved&&!recentTxn)return;
+    const cand={name:k,bal:ss?Math.abs(ss.cur):null,lastTxn:lt?lt.date:null,lastChange:v25LastChange(hh),txns:v25TxnsFor([k]).length};
+    if(!best||(cand.lastTxn||'')>(best.lastTxn||''))best=cand;
+  });
+  return best;
+}
+cardRows=function(){
+  const out=[],excludedNames=new Set();
+  (state.cards||[]).forEach(c=>{
+    if(c.excluded){excludedNames.add(norm(c.name));cardNames(c).forEach(n=>excludedNames.add(norm(n)));return;}
+    const src=c.match||c.name,names=cardNames(c);
+    const h=histFor(src),s=h.length?changeStats(h):null;
+    const bal=s?Math.abs(s.cur):Number(c.balance||0);
+    out.push({card:c,name:c.name,src,names,h,s,bal,limit:Number(c.limit||0),min:Number(c.minimum||0),due:c.due,apr:Number(c.apr||0),
+      t:cardTxnStats(names),known:true,twin:v25TwinFor(c,h,s)});
+  });
+  const excludedKeys=new Set((state.excludedBalKeys||[]).map(norm));
+  Object.keys(state.balHist||{}).forEach(k=>{
+    if(!CARD_RE.test(k))return;
+    if(excludedNames.has(norm(k))||excludedKeys.has(norm(k)))return;
+    if(out.some(r=>norm(r.name)===norm(k)||(r.names||[r.src]).some(n=>norm(n)===norm(k))))return;
+    const h=state.balHist[k],s=changeStats(h);
+    if(!s||s.cur>0)return;
+    out.push({card:null,name:k,src:k,names:[k],h,s,bal:Math.abs(s.cur),limit:0,min:0,due:'',apr:0,t:cardTxnStats(k),known:false});
+  });
+  out.forEach(r=>{
+    const spans30=r.h&&r.h.length&&r.h[0][0]<=daysAgo(30);
+    r.stale=!!(spans30&&r.s&&r.s.d30===0&&r.t.n>0);
+  });
+  return out.sort((a,b)=>b.bal-a.bal);
+};
+function switchCardSource(id,name){
+  const c=(state.cards||[]).find(x=>x.id===id);if(!c)return;
+  const old=c.match||c.name;
+  if(!confirm(`Use "${name}" for ${c.name}?\n\nIts balance will come from "${name}". "${old}" stays linked as an older number, so its transactions still count for this card.`))return;
+  const also=new Set((c.alsoMatch||[]).filter(n=>norm(n)!==norm(name)));
+  if(norm(old)!==norm(name))also.add(old);
+  c.match=name;c.alsoMatch=[...also];
+  state.excludedBalKeys=(state.excludedBalKeys||[]).filter(k=>norm(k)!==norm(name));
+  save();renderAll();
+}
+function linkCardName(id,name){
+  const c=(state.cards||[]).find(x=>x.id===id);if(!c)return;
+  c.alsoMatch=[...new Set([...(c.alsoMatch||[]),name])];
+  save();renderAll();
+}
+function unlinkCardName(id,name){
+  const c=(state.cards||[]).find(x=>x.id===id);if(!c)return;
+  c.alsoMatch=(c.alsoMatch||[]).filter(n=>norm(n)!==norm(name));
+  save();renderAll();
+}
+function v25CardNotes(r){
+  if(!r.known)return '';
+  let h='';
+  const also=(r.card.alsoMatch||[]);
+  if(also.length)h+=`<div class="muted" style="font-size:11px;margin-top:2px">Also includes ${also.map(esc).join(', ')}</div>`;
+  if(r.twin){
+    const t=r.twin;
+    h+=`<div class="alertrow warn" style="margin-top:6px;padding:8px 10px"><div style="font-size:12px"><strong>${esc(r.src)} hasn't changed${r.s&&r.s.lastDate?` since ${shortDate(v25LastChange(r.h))}`:''}.</strong> ${esc(t.name)} is active${t.bal!==null?`: ${money(t.bal)}`:''}${t.lastTxn?`, last transaction ${shortDate(t.lastTxn)}`:''}. This is usually a reissued card number.</div>
+      <button class="btn small primary" onclick="switchCardSource('${r.card.id}','${esc(t.name).replace(/'/g,"\\'")}')">Use ${esc(t.name)}</button></div>`;
+  }
+  return h;
+}
+const _v25RenderCards2=renderCards2;
+renderCards2=function(){
+  _v25RenderCards2();
+  const body=$('cardsBody');if(!body)return;
+  const rows=cardRows();
+  // add the notes and point Txns at every number the card has used
+  [...body.querySelectorAll('tr')].forEach((tr,i)=>{
+    const r=rows[i];if(!r||!r.known)return;
+    const td=tr.querySelector('td');if(td)td.insertAdjacentHTML('beforeend',v25CardNotes(r));
+    const btn=[...tr.querySelectorAll('button')].find(b=>b.textContent.trim()==='Txns');
+    if(btn)btn.setAttribute('onclick',`openCardTxns('${r.card.id}')`);
+  });
+};
+function openCardTxns(id){
+  showTab('transactions');
+  if($('txnSearch'))$('txnSearch').value='';
+  if($('txnMonth'))$('txnMonth').value='';
+  const s=$('txnAccountFilter');
+  if(s){renderTransactions();s.value='card:'+id;renderTransactions();}
+}
+openAcctTxns=function(name){
+  showTab('transactions');
+  const s=$('txnAccountFilter');if(!s)return;
+  const card=(state.cards||[]).find(c=>!c.excluded&&cardNames(c).some(n=>norm(n)===norm(name)));
+  if(card){openCardTxns(card.id);return}
+  _v25ForceAcct=name;renderTransactions();s.value=name;renderTransactions();
+};
+let _v25ForceAcct='';
+renderTransactions=function(){
+  const sel=$('txnAccountFilter');
+  let q=($('txnSearch')?.value||'').toLowerCase(),m=$('txnMonth')?.value||'',af=sel?.value||'',cf=$('txnCategoryFilter')?.value||'';
+  const accts=[...new Set(state.transactions.map(t=>t.account).filter(Boolean))].sort(),cats=[...new Set(state.transactions.map(t=>t.category).filter(Boolean))].sort();
+  if(_v25ForceAcct&&!accts.includes(_v25ForceAcct))accts.push(_v25ForceAcct);
+  const cards=(state.cards||[]).filter(c=>!c.excluded);
+  if(sel)sel.innerHTML='<option value="">All accounts</option>'
+    +(cards.length?`<optgroup label="Credit cards (every card number)">${cards.map(c=>`<option value="card:${c.id}" ${af==='card:'+c.id?'selected':''}>💳 ${esc(c.name)}</option>`).join('')}</optgroup>`:'')
+    +`<optgroup label="Accounts">${accts.map(x=>`<option ${x===af?'selected':''}>${esc(x)}</option>`).join('')}</optgroup>`;
+  if($('txnCategoryFilter'))$('txnCategoryFilter').innerHTML='<option value="">All categories</option>'+cats.map(x=>`<option ${x===cf?'selected':''}>${esc(x)}</option>`).join('');
+  let acctSet=null,cardSel=null;
+  if(af.startsWith('card:')){cardSel=cards.find(c=>'card:'+c.id===af);acctSet=new Set(cardNames(cardSel).map(norm))}
+  let rows=state.transactions.filter(t=>(!q||`${t.merchant} ${t.category} ${t.account}`.toLowerCase().includes(q))&&(!m||monthKey(t.date)===m)&&(!af||(acctSet?acctSet.has(norm(t.account)):t.account===af))&&(!cf||t.category===cf)).sort((a,b)=>b.date.localeCompare(a.date)).slice(0,500);
+  let empty='No transactions loaded yet.';
+  if(state.transactions.length&&af){
+    empty=cardSel?`No transactions under ${cardNames(cardSel).map(esc).join(' or ')}. If this card has a new number, open Accounts → Credit cards to link the old one.`:`No transactions under ${esc(af)}.`;
+  }else if(state.transactions.length)empty='No transactions match these filters.';
+  $('txnBody').innerHTML=rows.length?rows.map(t=>{let a=state.assignments.find(a=>a.matchedTxnId===t.id),b=a&&state.bills.find(b=>b.id===a.billId);return `<tr><td>${fmtDate(t.date)}</td><td>${esc(t.merchant)}${typeof appleTxnNote==='function'?appleTxnNote(t):''}</td><td>${esc(t.category)}</td><td>${esc(t.account)}${typeof isMirrorTxn==='function'&&isMirrorTxn(t)?`<div class="muted" style="font-size:10px">PayPal copy · not counted${mirrorOf(t)?' (see '+esc(mirrorOf(t).account)+' '+shortDate(mirrorOf(t).date)+')':''}</div>`:''}</td><td class="money">${money(t.amount)}</td><td>${b?`<span class="pill match">${esc(b.name)}</span>`:'<span class="muted">Unmatched</span>'}</td><td class="right"><button class="btn small" onclick="openManualMatch('${t.id}')">${b?'Change':'Match'}</button></td></tr>`}).join(''):`<tr><td colspan="7" class="empty">${empty}</td></tr>`;
+};
+// card modal: "also matches" field
+(function(){
+  const m=$('cardMatch');if(!m||$('cardAlso'))return;
+  const lab=m.previousElementSibling;if(lab)lab.textContent='Balance comes from (account name)';
+  m.parentElement.insertAdjacentHTML('afterend',`<div style="grid-column:1/-1"><label>Also matches: older or other card numbers (comma separated)</label><input id="cardAlso" class="input" list="txnAcctList" placeholder="e.g. Card (...9468)"><div class="muted" style="font-size:11px;margin-top:4px">Transactions under these names count for this card. Use it when the bank reissues the card with a new number.</div></div>`);
+})();
+const _v25OpenCardModal=openCardModal,_v25EditCard=editCard,_v25SaveCard=saveCard;
+openCardModal=function(){_v25OpenCardModal();if($('cardAlso'))$('cardAlso').value=''};
+editCard=function(id){_v25EditCard(id);const c=(state.cards||[]).find(x=>x.id===id);if($('cardAlso')&&c)$('cardAlso').value=(c.alsoMatch||[]).join(', ')};
+saveCard=function(){
+  const editing=$('cardEditId').value,also=$('cardAlso')?$('cardAlso').value.split(',').map(x=>x.trim()).filter(Boolean):[];
+  _v25SaveCard();
+  const c=editing?(state.cards||[]).find(x=>x.id===editing):(state.cards||[]).at(-1);
+  if(c){c.alsoMatch=also.filter(n=>norm(n)!==norm(c.match||c.name));state.excludedBalKeys=(state.excludedBalKeys||[]).filter(k=>norm(k)!==norm(c.match||''));save();renderAll()}
+};
+
+/* ============================================================
+   2. Accounts page: every account
+   ============================================================ */
+function v25KindOf(name,h){
+  if(CARD_RE.test(name)||(h&&h.length&&h.at(-1)[1]<0&&/card/i.test(name)))return 'Credit card';
+  if(INVEST_RE.test(name))return 'Investment';
+  if(/loan|auto|mortgage|cadillac|xt5/i.test(name)&&h&&h.length&&h.at(-1)[1]<0)return 'Loan';
+  if(/checking|savings|banking|cash/i.test(name))return 'Bank';
+  if(/paypal|venmo|apple cash/i.test(name))return 'Wallet';
+  if(/cadillac|xt5|vehicle|car\b/i.test(name))return 'Asset';
+  return 'Other';
+}
+function v25OtherAccounts(){
+  const covered=new Set();
+  state.accounts.forEach(a=>{covered.add(norm(acctLabel(a)));matchList(a).forEach(m=>covered.add(m))});
+  v25CardNameSet().forEach(n=>covered.add(n));
+  const excluded=new Set((state.excludedBalKeys||[]).map(norm));
+  const names=[...new Set([...Object.keys(state.balHist||{}),...txnAccountNames()])].filter(k=>!covered.has(norm(k)));
+  const txByAcct={};state.transactions.forEach(t=>{const k=t.account;if(!k)return;const o=txByAcct[k]||(txByAcct[k]={n:0,last:''});o.n++;if(t.date>o.last)o.last=t.date});
+  return names.map(k=>{
+    const h=(state.balHist||{})[k]||[],s=h.length?changeStats(h):null,tx=txByAcct[k]||{n:0,last:''};
+    const kind=v25KindOf(k,h);
+    const twinOf=(state.cards||[]).find(c=>!c.excluded&&v25Sig(c.match||c.name)===v25Sig(k)&&/#/.test(v25Sig(k)));
+    return {name:k,h,s,bal:s?s.cur:null,lastChange:v25LastChange(h),txns:tx.n,lastTxn:tx.last,kind,excluded:excluded.has(norm(k)),twinOf};
+  }).sort((a,b)=>a.kind.localeCompare(b.kind)||Math.abs(b.bal||0)-Math.abs(a.bal||0));
+}
+const _v25RenderAccounts=renderAccounts;
+renderAccounts=function(){
+  _v25RenderAccounts();
+  const grid=$('accountsGrid');if(!grid)return;
+  let box=$('allAcctsV25');
+  if(!box){grid.insertAdjacentHTML('afterend','<div id="allAcctsV25"></div>');box=$('allAcctsV25')}
+  if(!grid.previousElementSibling||!grid.previousElementSibling.classList.contains('v25h'))grid.insertAdjacentHTML('beforebegin','<h2 class="v25h" style="margin:4px 0 10px">Cash &amp; bank accounts</h2>');
+  const rows=cardRows();
+  const cash=state.accounts.filter(a=>a.include).reduce((s,a)=>s+Number(a.balance||0),0);
+  const debt=rows.reduce((s,r)=>s+r.bal,0);
+  const others=v25OtherAccounts();
+  const stat=(r)=>{
+    if(!r.known)return '<span class="pill unpaid">Not tracked</span>';
+    if(r.twin)return '<span class="pill alert">Balance looks stale</span>';
+    if(r.stale)return '<span class="pill unpaid">No change in 30 days</span>';
+    return '<span class="pill paid">Active</span>';
+  };
+  const lastTx=r=>{const t=v25LastTxn(r.names||[r.src]);return t?shortDate(t.date):'<span class="muted">none</span>'};
+  let html=`<div class="card" style="margin-top:18px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>Credit cards</h2><button class="btn small" onclick="showTab('cards')">Credit Cards tab</button></div>
+    <div class="sub">${rows.length} card${rows.length===1?'':'s'} • ${money(debt)} owed • cash on hand ${money(cash)}</div>
+    <div style="overflow:auto;margin-top:10px"><table><thead><tr><th>Card</th><th>Balance from</th><th class="money">Balance</th><th class="money">Limit</th><th class="money">Used</th><th>Balance last changed</th><th>Last transaction</th><th>Status</th><th></th></tr></thead><tbody>
+    ${rows.map(r=>{const u=r.limit?r.bal/r.limit*100:null;return `<tr>
+      <td><strong>${esc(r.name)}</strong>${v25CardNotes(r)}</td>
+      <td style="font-size:12px">${esc(r.src)}</td>
+      <td class="money">${money(r.bal)}</td>
+      <td class="money">${r.limit?money(r.limit):'<span class="muted">—</span>'}</td>
+      <td class="money ${u===null?'':(u>=80?'bad':u>=50?'warn':'good')}">${u===null?'—':u.toFixed(1)+'%'}</td>
+      <td>${r.h&&r.h.length?shortDate(v25LastChange(r.h)):'<span class="muted">—</span>'}</td>
+      <td>${lastTx(r)}</td>
+      <td>${stat(r)}</td>
+      <td class="right" style="white-space:nowrap">${r.known?`<button class="btn small" onclick="openCardTxns('${r.card.id}')">Txns</button> <button class="btn small" onclick="editCard('${r.card.id}')">Edit</button>`:`<button class="btn small" onclick="openAcctTxns('${esc(r.name).replace(/'/g,"\\'")}')">Txns</button> <button class="btn small" onclick="adoptCard('${esc(r.name).replace(/'/g,"\\'")}')">Track</button>`}</td></tr>`}).join('')||'<tr><td colspan="9" class="empty">No cards yet.</td></tr>'}
+    </tbody></table></div></div>`;
+  html+=`<div class="card" style="margin-top:18px">
+    <h2>Everything else in your data</h2>
+    <div class="sub">Accounts found in your Balances or Transactions imports that aren't one of the cash accounts or cards above. Excluded ones are listed too, so nothing is hidden.</div>
+    <div style="overflow:auto;margin-top:10px"><table><thead><tr><th>Account</th><th>Kind</th><th class="money">Balance</th><th>Balance last changed</th><th class="money">Transactions</th><th>Last transaction</th><th></th></tr></thead><tbody>
+    ${others.map(o=>{
+      const acts=[];
+      if(o.txns)acts.push(`<button class="btn small" onclick="openAcctTxns('${esc(o.name).replace(/'/g,"\\'")}')">Txns</button>`);
+      if(o.twinOf){
+        acts.push(`<button class="btn small" onclick="linkCardName('${o.twinOf.id}','${esc(o.name).replace(/'/g,"\\'")}')">Link to ${esc(o.twinOf.name)}</button>`);
+        acts.push(`<button class="btn small primary" onclick="switchCardSource('${o.twinOf.id}','${esc(o.name).replace(/'/g,"\\'")}')">Use as ${esc(o.twinOf.name)}'s balance</button>`);
+      }else if(o.kind==='Credit card'&&!o.excluded&&o.bal!==null&&o.bal<=0)acts.push(`<button class="btn small" onclick="adoptCard('${esc(o.name).replace(/'/g,"\\'")}')">Track as card</button>`);
+      if(o.excluded)acts.push(`<button class="btn small" onclick="unexcludeKey('${esc(o.name).replace(/'/g,"\\'")}')">Un-exclude</button>`);
+      return `<tr><td><strong>${esc(o.name)}</strong>${o.excluded?' <span class="pill unpaid">excluded</span>':''}${o.twinOf?`<div class="warn" style="font-size:11px">Same name pattern as your card ${esc(o.twinOf.name)} (${esc(o.twinOf.match||o.twinOf.name)})</div>`:''}</td>
+        <td style="font-size:12px">${o.kind}</td>
+        <td class="money">${o.bal===null?'<span class="muted">—</span>':money(o.bal)}</td>
+        <td>${o.lastChange?shortDate(o.lastChange):'<span class="muted">—</span>'}</td>
+        <td class="money">${o.txns||'<span class="muted">0</span>'}</td>
+        <td>${o.lastTxn?shortDate(o.lastTxn):'<span class="muted">—</span>'}</td>
+        <td class="right" style="white-space:nowrap">${acts.join(' ')}</td></tr>`}).join('')||'<tr><td colspan="7" class="empty">Nothing else — every account is accounted for.</td></tr>'}
+    </tbody></table></div></div>`;
+  box.innerHTML=html;
+};
+
+/* ============================================================
+   3. bill matching
+   ============================================================ */
+function v25DueDate(c,b){
+  if(/every/i.test(b.due||''))return c.date;
+  const day=parseInt(b.due,10);if(!Number.isFinite(day))return c.date;
+  const [y,m]=c.date.split('-').map(Number);
+  const mk=(yy,mm)=>{const last=new Date(yy,mm,0).getDate();return `${yy}-${String(mm).padStart(2,'0')}-${String(Math.min(day,last)).padStart(2,'0')}`};
+  let d=mk(y,m);
+  if(d<c.date){const nm=m===12?1:m+1,ny=m===12?y+1:y;d=mk(ny,nm)}
+  return d;
+}
+function v25Aliases(b){return [b.name,...String(b.aliases||'').split(',')].map(x=>x.trim().toLowerCase()).filter(Boolean)}
+function v25NameHit(b,t){
+  const al=v25Aliases(b),m=String(t.merchant||'').toLowerCase(),m0=String(t.origMerchant||'').toLowerCase();
+  const exact=al.some(x=>m===x||(m0&&m0===x));
+  const hit=exact||al.some(x=>m.includes(x)||x.includes(m)||(m0&&(m0.includes(x)||x.includes(m0))));
+  return {exact,hit};
+}
+// how a transaction fits an assignment: 'match', 'loose' (counted, lower priority) or 'maybe' (shown as a possible match only)
+function v25Fit(a,b,c,t){
+  if(Number(t.amount)>=0)return null;
+  if(typeof isMirrorTxn==='function'&&isMirrorTxn(t))return null;
+  if((a.rejectTxnIds||[]).includes(t.id))return null;
+  const nh=v25NameHit(b,t);if(!nh.hit)return null;
+  const card=isCardBill(b);
+  if(card&&isCardAcctName(t.account))return null; // a charge on a card is not a card payment
+  const tol=Number(state.settings.tolerance||3),win=Number(state.settings.dateWindow||7);
+  const nc=nextCycle(c.date),cEnd=nc?nc.date:addDays(c.date,14);
+  const due=v25DueDate(c,b),every=/every/i.test(b.due||'');
+  const inRange=every?(t.date>=addDays(c.date,-2)&&t.date<addDays(cEnd,-1)):Math.abs(v25Days(due,t.date))<=win;
+  if(!inRange||t.date>today())return null;
+  const want=Math.abs(Number(a.amount||0)),amt=Math.abs(Number(t.amount||0));
+  const amountHit=Math.abs(amt-want)<=Math.max(tol,want*.035);
+  const ratio=want?amt/want:1;
+  const inCycle=t.date>=c.date&&t.date<cEnd;
+  let kind;
+  if(amountHit)kind='match';
+  else if(card&&ratio>=.25&&ratio<=4)kind='loose';
+  else if(!card&&nh.exact&&inCycle&&ratio>=1/3&&ratio<=3)kind='loose';
+  else kind='maybe';
+  const score=(nh.exact?5:3)+(kind==='match'?3:kind==='loose'?1:0);
+  return {kind,score,dist:Math.abs(v25Days(every?c.date:due,t.date)),due};
+}
+runMatching=function(){
+  const auto=state.assignments.filter(a=>!a.manual);
+  auto.forEach(a=>{a.paid=false;a.matchedTxnId=null;a.suggestTxnId=null});
+  const used=new Set(state.assignments.filter(a=>a.matchedTxnId).map(a=>a.matchedTxnId));
+  const lo=state.cycles.reduce((m,c)=>c.date<m?c.date:m,'9999');
+  const pool=state.transactions.filter(t=>t.date>=addDays(lo,-14)&&Number(t.amount)<0);
+  const pairs=[],maybes=[];
+  for(const a of auto){
+    const b=state.bills.find(x=>x.id===a.billId),c=state.cycles.find(x=>x.id===a.cycleId);if(!b||!c)continue;
+    const due=v25DueDate(c,b),win=Number(state.settings.dateWindow||7)+16;
+    for(const t of pool){
+      if(used.has(t.id))continue;
+      if(Math.abs(v25Days(due,t.date))>win)continue;
+      const f=v25Fit(a,b,c,t);if(!f)continue;
+      (f.kind==='maybe'?maybes:pairs).push({a,t,...f});
+    }
+  }
+  pairs.sort((x,y)=>y.score-x.score||x.dist-y.dist);
+  const done=new Set();
+  for(const p of pairs){
+    if(done.has(p.a.id)||used.has(p.t.id))continue;
+    p.a.paid=true;p.a.matchedTxnId=p.t.id;done.add(p.a.id);used.add(p.t.id);
+  }
+  maybes.sort((x,y)=>x.dist-y.dist);
+  const sugUsed=new Set();
+  for(const p of maybes){
+    if(p.a.paid||p.a.suggestTxnId||used.has(p.t.id)||sugUsed.has(p.t.id))continue;
+    p.a.suggestTxnId=p.t.id;sugUsed.add(p.t.id);
+  }
+  save();renderAll();
+};
+function confirmSuggestion(aid,updateBill){
+  const a=state.assignments.find(x=>x.id===aid);if(!a||!a.suggestTxnId)return;
+  const t=state.transactions.find(x=>x.id===a.suggestTxnId);if(!t)return;
+  state.assignments.forEach(o=>{if(o.matchedTxnId===t.id&&o.id!==a.id){o.matchedTxnId=null;if(!o.manual)o.paid=false}});
+  a.paid=true;a.manual=true;a.matchedTxnId=t.id;a.suggestTxnId=null;
+  if(updateBill){const b=state.bills.find(x=>x.id===a.billId);if(b){b.amount=Math.abs(Number(t.amount));a.amount=b.amount}}
+  save();closeModal('kpiModal');renderAll();
+}
+function rejectMatch(aid){
+  const a=state.assignments.find(x=>x.id===aid);if(!a)return;
+  const tid=a.matchedTxnId||a.suggestTxnId;
+  a.rejectTxnIds=[...new Set([...(a.rejectTxnIds||[]),tid].filter(Boolean))];
+  a.paid=false;a.manual=false;a.matchedTxnId=null;a.suggestTxnId=null;
+  save();closeModal('kpiModal');renderAll();
+}
+function useTxnForAssignment(aid,tid){
+  const a=state.assignments.find(x=>x.id===aid);if(!a)return;
+  state.assignments.forEach(o=>{if(o.matchedTxnId===tid&&o.id!==a.id){o.matchedTxnId=null;if(!o.manual)o.paid=false}});
+  a.paid=true;a.manual=true;a.matchedTxnId=tid;a.suggestTxnId=null;
+  save();closeModal('kpiModal');renderAll();
+}
+
+/* ============================================================
+   4. see the transaction behind a bill
+   ============================================================ */
+function v25TxnBlock(t,extra){
+  if(!t)return '';
+  const m0=t.origMerchant&&t.origMerchant!==t.merchant?`<div class="muted" style="font-size:11px">Bank shows: ${esc(t.origMerchant)}</div>`:'';
+  return `<table><tbody>
+    <tr><td class="muted">Date</td><td><strong>${fmtDate(t.date)}</strong></td></tr>
+    <tr><td class="muted">Merchant</td><td><strong>${esc(t.merchant)}</strong>${m0}</td></tr>
+    <tr><td class="muted">Amount</td><td><strong>${money(t.amount)}</strong></td></tr>
+    <tr><td class="muted">Account</td><td>${esc(t.account||'—')}</td></tr>
+    <tr><td class="muted">Category</td><td>${esc(t.category||'—')}</td></tr>
+    ${extra||''}</tbody></table>`;
+}
+function showTxnInList(tid){
+  const t=state.transactions.find(x=>x.id===tid);if(!t)return;
+  closeModal('kpiModal');showTab('transactions');
+  if($('txnSearch'))$('txnSearch').value=t.merchant||'';
+  if($('txnMonth'))$('txnMonth').value=monthKey(t.date);
+  if($('txnAccountFilter'))$('txnAccountFilter').value='';
+  renderTransactions();
+}
+function v25Candidates(a,b,c){
+  const due=v25DueDate(c,b),win=Number(state.settings.dateWindow||7)+7;
+  return state.transactions.filter(t=>Number(t.amount)<0&&v25NameHit(b,t).hit&&Math.abs(v25Days(due,t.date))<=win&&t.id!==a.matchedTxnId)
+    .sort((x,y)=>Math.abs(v25Days(due,x.date))-Math.abs(v25Days(due,y.date))).slice(0,6);
+}
+function openBillTxn(aid){
+  const a=state.assignments.find(x=>x.id===aid);if(!a)return;
+  const b=state.bills.find(x=>x.id===a.billId)||{name:'Deleted bill',due:''},c=state.cycles.find(x=>x.id===a.cycleId);
+  const t=a.matchedTxnId?state.transactions.find(x=>x.id===a.matchedTxnId):null;
+  const sug=!t&&a.suggestTxnId?state.transactions.find(x=>x.id===a.suggestTxnId):null;
+  const due=c?v25DueDate(c,b):'';
+  $('kpiModalTitle').textContent=b.name;
+  let h=`<div class="sub" style="margin-bottom:10px">Pay cycle ${c?fmtDate(c.date):'—'} • due ${due?fmtDate(due):esc(b.due)} • amount due ${money(a.amount)}</div>`;
+  if(t){
+    const diff=Math.abs(Number(t.amount))-Number(a.amount||0);
+    h+=`<h3 style="margin:6px 0">Matched transaction</h3>`+v25TxnBlock(t,`<tr><td class="muted">How</td><td>${a.manual?'Matched by you':'Matched automatically'}${Math.abs(diff)>0.005?` • <span class="${diff>0?'bad':'good'}">${diff>0?'+':''}${money(diff)} vs amount due</span>`:''}</td></tr>`);
+    h+=`<div class="actions" style="margin-top:12px"><button class="btn" onclick="showTxnInList('${t.id}')">Show in Transactions</button><button class="btn danger" onclick="rejectMatch('${a.id}')">Not this payment</button></div>`;
+  }else if(sug){
+    h+=`<div class="alertrow warn" style="margin-bottom:10px"><div><strong>Possible match, not counted as paid</strong><div class="muted" style="font-size:12px">The name fits but the amount or date doesn't, so it wasn't marked paid automatically.</div></div></div>`+v25TxnBlock(sug);
+    h+=`<div class="actions" style="margin-top:12px"><button class="btn primary" onclick="confirmSuggestion('${a.id}',false)">Yes, this paid it</button><button class="btn" onclick="confirmSuggestion('${a.id}',true)">Yes, and update the bill to ${money(Math.abs(sug.amount))}</button><button class="btn danger" onclick="rejectMatch('${a.id}')">No</button></div>`;
+  }else{
+    h+=`<div class="note">${a.paid?'Marked paid by hand, with no transaction attached.':'No payment found yet for this cycle.'}</div>`;
+  }
+  if(c){
+    const cand=v25Candidates(a,b,c).filter(x=>!sug||x.id!==sug.id);
+    if(cand.length)h+=`<h3 style="margin:16px 0 6px">Other transactions that could be it</h3><table><tbody>${cand.map(x=>`<tr><td>${shortDate(x.date)}</td><td>${esc(x.merchant)}<div class="muted" style="font-size:11px">${esc(x.account)}</div></td><td class="money">${money(x.amount)}</td><td class="right"><button class="btn small" onclick="useTxnForAssignment('${a.id}','${x.id}')">Use this</button></td></tr>`).join('')}</tbody></table>`;
+  }
+  const lp=v25BillPayments(b)[0];
+  if(lp&&(!t||lp.t.id!==t.id))h+=`<div class="muted" style="font-size:12px;margin-top:14px">Last payment: ${money(lp.t.amount)} on ${fmtDate(lp.t.date)} (${esc(lp.t.account)}) <button class="btn small" onclick="openBillHistory('${b.id}')">History</button></div>`;
+  $('kpiModalBody').innerHTML=h;openModal('kpiModal');
+}
+// every payment we know for a bill: matched ones first-class, plus exact-alias cash outflows
+function v25BillPayments(b){
+  const byId=new Map(state.transactions.map(t=>[t.id,t])),seen=new Set(),out=[];
+  state.assignments.filter(a=>a.billId===b.id&&a.matchedTxnId).forEach(a=>{const t=byId.get(a.matchedTxnId);if(t&&!seen.has(t.id)){seen.add(t.id);out.push({t,how:'matched',a})}});
+  const card=isCardBill(b);
+  // only names that belong to this bill alone, so a shared alias like "american express" can't show one payment under three bills
+  const others=state.bills.filter(x=>x.id!==b.id).map(v25Aliases);
+  const mine=v25Aliases(b).filter(a=>a.length>=4&&!others.some(o=>o.includes(a)));
+  state.transactions.forEach(t=>{
+    if(seen.has(t.id)||Number(t.amount)>=0||!mine.length)return;
+    if(typeof isMirrorTxn==='function'&&isMirrorTxn(t))return;
+    const m=String(t.merchant||'').toLowerCase(),m0=String(t.origMerchant||'').toLowerCase();
+    if(!mine.some(a=>m===a||m0===a))return;
+    if(card&&isCardAcctName(t.account))return;
+    seen.add(t.id);out.push({t,how:'name'});
+  });
+  return out.sort((x,y)=>y.t.date.localeCompare(x.t.date));
+}
+function openBillHistory(billId){
+  const b=state.bills.find(x=>x.id===billId);if(!b)return;
+  const list=v25BillPayments(b).slice(0,12);
+  $('kpiModalTitle').textContent=`${b.name}: payments`;
+  $('kpiModalBody').innerHTML=list.length?`<table><thead><tr><th>Date</th><th>Merchant</th><th>Account</th><th class="money">Amount</th><th></th></tr></thead><tbody>${list.map(p=>`<tr><td>${fmtDate(p.t.date)}</td><td>${esc(p.t.merchant)}</td><td style="font-size:12px">${esc(p.t.account)}</td><td class="money">${money(p.t.amount)}</td><td>${p.how==='matched'?'<span class="pill match">matched</span>':'<span class="muted" style="font-size:11px">name match</span>'} <button class="btn small" onclick="openTxnDetail('${p.t.id}')">View</button></td></tr>`).join('')}</tbody></table><div class="note" style="margin-top:12px">"Matched" payments are attached to a pay cycle. "Name match" rows are other payments to the same merchant name.</div>`
+    :'<div class="note">No payments found for this bill. Check its merchant aliases (Bills → Edit).</div>';
+  openModal('kpiModal');
+}
+function openTxnDetail(tid){
+  const t=state.transactions.find(x=>x.id===tid);if(!t)return;
+  const a=state.assignments.find(x=>x.matchedTxnId===tid),b=a&&state.bills.find(x=>x.id===a.billId),c=a&&state.cycles.find(x=>x.id===a.cycleId);
+  $('kpiModalTitle').textContent='Transaction';
+  $('kpiModalBody').innerHTML=v25TxnBlock(t,`<tr><td class="muted">Bill</td><td>${b?`${esc(b.name)} • pay cycle ${c?fmtDate(c.date):'—'}`:'<span class="muted">not matched to a bill</span>'}</td></tr>`)
+    +`<div class="actions" style="margin-top:12px"><button class="btn" onclick="showTxnInList('${t.id}')">Show in Transactions</button><button class="btn" onclick="closeModal('kpiModal');openManualMatch('${t.id}')">${b?'Change match':'Match to a bill'}</button></div>`;
+  openModal('kpiModal');
+}
+// Bills tab: Last paid column
+(function(){
+  const tb=$('billsBody');if(!tb)return;
+  const tr=tb.closest('table')&&tb.closest('table').querySelector('thead tr');
+  if(tr&&!tr.querySelector('.v25lp')){const th=document.createElement('th');th.className='v25lp';th.textContent='Last paid';tr.insertBefore(th,tr.lastElementChild)}
+})();
+const _v25RenderBills=renderBills;
+renderBills=function(){
+  _v25RenderBills();
+  const tb=$('billsBody');if(!tb)return;
+  [...tb.querySelectorAll('tr')].forEach((tr,i)=>{
+    const b=state.bills[i];if(!b)return;
+    const p=v25BillPayments(b)[0];
+    const td=document.createElement('td');
+    td.innerHTML=p?`<button class="btn small" style="text-align:left" onclick="openBillHistory('${b.id}')">${shortDate(p.t.date)} · ${money(Math.abs(p.t.amount))}</button>`:'<span class="muted">none found</span>';
+    tr.insertBefore(td,tr.lastElementChild);
+  });
+};
+
+/* ============================================================
+   5. subscriptions in Left to be paid
+   ============================================================ */
+let _v25CycleSubs={};
+function cycleSubsSplit(c){
+  if(_v25CycleSubs[c.id])return _v25CycleSubs[c.id];
+  const res={cash:0,card:0,cashList:[],cardList:[]};
+  const nc=nextCycle(c.date),end=nc?nc.date:addDays(c.date,14);
+  if(end<=today()||!state.transactions.length){_v25CycleSubs[c.id]=res;return res}
+  try{
+    const subs=detectSubs(),idx=subBillIndex(subs),list=subsInCycle(c,subs);
+    const cs=state.assignments.filter(a=>a.cycleId===c.id);
+    list.forEach(r=>{
+      if(r.status==='charged')return;
+      const rem=Math.max(0,r.amount-r.charged);if(rem<0.005)return;
+      const bill=idx.billForSub(r.s);if(bill&&cs.some(a=>a.billId===bill.id))return;
+      const row={vendor:r.s.vendor,date:r.date,amount:rem,account:r.s.account,status:r.status};
+      if(subOnCard(r.s)){res.card+=rem;res.cardList.push(row)}else{res.cash+=rem;res.cashList.push(row)}
+    });
+  }catch(e){console.warn('v25 subs',e)}
+  _v25CycleSubs[c.id]=res;return res;
+}
+const _v25CycleStats=cycleStats;
+cycleStats=function(c){
+  const s=_v25CycleStats(c);
+  const on=state.settings.subsInLeft!==false;
+  const sp=on?cycleSubsSplit(c):{cash:0,card:0,cashList:[],cardList:[]};
+  s.billsLeft=s.left;s.subsCash=sp.cash;s.subsCard=sp.card;s.subsSplit=sp;s.subsOn=on;
+  s.left=s.billsLeft+s.subsCash;s.diff=s.cash-s.left;
+  return s;
+};
+function toggleSubsInLeft(v){state.settings.subsInLeft=!!v;save();renderAll();openKpiDetail('left')}
+const _v25RenderDashboard=renderDashboard;
+renderDashboard=function(){
+  _v25RenderDashboard();
+  const c=currentCycle();if(!c)return;
+  const s=cycleStats(c),sp=s.subsSplit;
+  const foot=$('kLeft')&&$('kLeft').parentElement.querySelector('.kpi-foot');
+  if(foot)foot.textContent=s.subsOn&&s.subsCash>0?`${money(s.billsLeft)} bills + ${money(s.subsCash)} cash subscriptions • tap for detail`:'Unpaid bills this cycle • tap for detail';
+  if($('safeSpendDetail'))$('safeSpendDetail').innerHTML=`${money(s.cash)} cash on hand − ${money(s.billsLeft)} bills still due${s.subsOn&&s.subsCash>0?` − ${money(s.subsCash)} subscriptions from cash`:''} = ${money(s.diff)} safe to spend`
+    +(s.subsCard>0?`<div class="muted" style="font-size:12px;margin-top:2px">Plus ${money(s.subsCard)} in subscriptions on credit cards (not taken from cash). All subscriptions this cycle: ${money(s.subsCash+s.subsCard)}.</div>`:'');
+  // dashboard bills: tappable, with possible matches
+  const _subIdx=(()=>{try{return subBillIndex()}catch(e){return null}})();
+  let html=s.as.map(a=>{
+    const b=state.bills.find(x=>x.id===a.billId)||{name:'Deleted bill',due:''};
+    const isSub=_subIdx?_subIdx.isSub(b,a):false;
+    const due=Number(a.amount||0);
+    const txn=a.matchedTxnId?state.transactions.find(t=>t.id===a.matchedTxnId):null;
+    const sug=!txn&&a.suggestTxnId?state.transactions.find(t=>t.id===a.suggestTxnId):null;
+    const actual=txn?Math.abs(Number(txn.amount||0)):(a.paid?due:null);
+    const over=actual!==null&&actual>due+0.005;
+    const dd=v25DueDate(c,b);
+    const actualCell=txn?`<button class="btn small" style="padding:2px 6px" onclick="openBillTxn('${a.id}')" title="${esc(txn.merchant)} • ${shortDate(txn.date)} • ${esc(txn.account)}">${money(actual)}</button><div class="muted" style="font-size:10px">${shortDate(txn.date)}</div>`
+      :(sug?`<button class="btn small" style="padding:2px 6px" onclick="openBillTxn('${a.id}')">${money(Math.abs(sug.amount))}?</button><div class="warn" style="font-size:10px">possible</div>`
+      :(actual===null?'<span class="muted">—</span>':money(actual)));
+    const status=a.paid?(txn?'<span class="pill paid">Paid</span>':'<span class="pill paid">Paid</span><div class="muted" style="font-size:10px">by hand</div>'):(sug?'<span class="pill unpaid">Check</span>':'<span class="pill unpaid">Not Paid</span>');
+    return `<tr${isSub?' class="subrow"':''}><td><a href="#" onclick="openBillTxn('${a.id}');return false" style="color:inherit;text-decoration:underline dotted">${esc(b.name)}</a>${isSub?'<span class="pill sub">🔁 Sub</span>':''}</td><td>${esc(b.due)}<div class="muted" style="font-size:10px">${shortDate(dd)}</div></td><td class="money">${money(due)}${Number(a.amount)!==Number(b.amount)?'<div class="muted" style="font-size:10px">override</div>':''}</td><td class="money ${over?'bad':''}">${actualCell}</td><td>${status}</td><td class="right"><button class="btn small" onclick="editAssignment('${a.id}')">Amount</button> <button class="btn small" onclick="togglePaid('${a.id}')">${a.paid?'Undo':'Mark paid'}</button></td></tr>`;
+  }).join('');
+  if(s.subsOn&&(sp.cashList.length||sp.cardList.length)){
+    html+=`<tr class="subrow"><td><a href="#" onclick="openKpiDetail('left');return false" style="color:inherit;text-decoration:underline dotted">🔁 Subscriptions from cash</a><div class="muted" style="font-size:10px">${sp.cashList.length} not set up as Bills</div></td><td>this cycle</td><td class="money">${money(sp.cash)}</td><td class="money"><span class="muted">—</span></td><td><span class="pill unpaid">Coming</span></td><td class="right muted" style="font-size:11px">counted in Left to be paid</td></tr>`;
+    if(sp.card>0)html+=`<tr><td colspan="6" class="muted" style="font-size:12px">💳 Also ${money(sp.card)} in ${sp.cardList.length} subscription${sp.cardList.length===1?'':'s'} on credit cards this cycle (not counted against cash). Total subscriptions: ${money(sp.cash+sp.card)}.</td></tr>`;
+  }
+  $('dashBills').innerHTML=html||`<tr><td colspan="6" class="empty">No bills assigned to this cycle.</td></tr>`;
+};
+const _v25OpenKpiDetail=openKpiDetail;
+openKpiDetail=function(kind){
+  if(kind!=='left'&&kind!=='diff')return _v25OpenKpiDetail(kind);
+  const c=currentCycle();if(!c)return;
+  const s=cycleStats(c),sp=s.subsSplit;
+  const subRows=l=>l.map(r=>`<tr><td>🔁 ${esc(r.vendor)}<div class="muted" style="font-size:11px">${esc(r.account)}${r.status==='late'?' • expected, not seen yet':''}</div></td><td>${shortDate(r.date)}</td><td class="money">${money(r.amount)}</td></tr>`).join('');
+  let body='';
+  if(kind==='left'){
+    const bills=s.as.filter(a=>!a.paid);
+    body=`<table><thead><tr><th>Bill</th><th>Due</th><th class="money">Amount</th></tr></thead><tbody>
+      ${bills.map(a=>{const b=state.bills.find(x=>x.id===a.billId)||{name:'Deleted bill',due:''};return `<tr><td><a href="#" onclick="openBillTxn('${a.id}');return false" style="color:inherit">${esc(b.name)}</a></td><td>${shortDate(v25DueDate(c,b))}</td><td class="money">${money(a.amount)}</td></tr>`}).join('')||'<tr><td colspan="3" class="empty">No unpaid bills.</td></tr>'}
+      <tr><td colspan="2"><strong>Bills left</strong></td><td class="money"><strong>${money(s.billsLeft)}</strong></td></tr>
+      ${s.subsOn?`<tr><td colspan="3" style="padding-top:14px"><strong>Subscriptions from cash</strong> <span class="muted" style="font-size:12px">(not set up as Bills)</span></td></tr>${subRows(sp.cashList)||'<tr><td colspan="3" class="muted">None expected from cash this cycle.</td></tr>'}
+      <tr><td colspan="2"><strong>Subscriptions from cash</strong></td><td class="money"><strong>${money(s.subsCash)}</strong></td></tr>`:''}
+      </tbody><tfoot><tr><td colspan="2"><strong>Left to be paid</strong></td><td class="money"><strong>${money(s.left)}</strong></td></tr></tfoot></table>`;
+    if(sp.cardList.length)body+=`<div class="card" style="margin-top:14px;padding:12px"><strong>💳 On credit cards: ${money(sp.card)}</strong> <span class="muted" style="font-size:12px">not counted, because it doesn't come out of cash</span><table style="margin-top:6px"><tbody>${subRows(sp.cardList)}</tbody></table><div class="muted" style="font-size:12px;margin-top:6px">All subscriptions still to come this cycle: <strong>${money(sp.cash+sp.card)}</strong> (${money(sp.cash)} cash + ${money(sp.card)} cards).</div></div>`;
+    body+=`<div class="note" style="margin-top:12px">Unpaid bills in the ${fmtDate(c.date)} pay cycle${s.subsOn?', plus subscriptions expected to come out of your cash accounts before next payday that aren\'t already Bills':''}. This is what Safe to spend holds back.</div>
+      <label style="display:block;margin-top:10px;font-size:13px"><input type="checkbox" ${s.subsOn?'checked':''} onchange="toggleSubsInLeft(this.checked)"> Count cash subscriptions in Left to be paid</label>`;
+  }else{
+    body=`<table><tbody>
+      <tr><td>Cash on hand</td><td class="money">${money(s.cash)}</td></tr>
+      <tr><td>&minus; Bills still due</td><td class="money">${money(-s.billsLeft)}</td></tr>
+      ${s.subsOn?`<tr><td>&minus; Subscriptions from cash</td><td class="money">${money(-s.subsCash)}</td></tr>`:''}
+      <tr><td><strong>= Safe to spend</strong></td><td class="money"><strong>${money(s.diff)}</strong></td></tr>
+    </tbody></table>${s.subsCard>0?`<div class="muted" style="font-size:12px;margin-top:8px">Not included: ${money(s.subsCard)} in subscriptions on credit cards.</div>`:''}<div class="note" style="margin-top:12px">Everything in your cash accounts, minus unpaid bills in the ${fmtDate(c.date)} pay cycle${s.subsOn?' and subscriptions due from cash before next payday':''}. It doesn't reserve anything for later cycles — check Funding &amp; Transfers for that.</div>`;
+  }
+  $('kpiModalTitle').textContent=kind==='left'?'Left to be paid':'Safe to spend';
+  $('kpiModalBody').innerHTML=body;openModal('kpiModal');
+};
+const _v25RenderCycleSubs=renderCycleSubs;
+renderCycleSubs=function(){
+  _v25RenderCycleSubs();
+  if(state.settings.subsInLeft===false)return;
+  const lab=$('csUncounted')&&$('csUncounted').previousElementSibling;if(lab)lab.textContent='From cash (in Left to be paid)';
+  const c=currentCycle();if(!c||!$('cycleSubsNote'))return;
+  const sp=cycleSubsSplit(c);
+  $('cycleSubsNote').innerHTML=sp.cash>0||sp.card>0?`<div class="note">${money(sp.cash)} from cash is counted in Left to be paid.${sp.card>0?` ${money(sp.card)} on credit cards is shown but not counted.`:''}</div>`:'';
+};
+
+/* ---------- migration + wiring ---------- */
+function migrateV25(){
+  let changed=false;
+  (state.cards||[]).forEach(c=>{if(!Array.isArray(c.alsoMatch)){c.alsoMatch=[];changed=true}});
+  if(state.settings.subsInLeft===undefined){state.settings.subsInLeft=true;changed=true}
+  if(!state._matchedV25){state._matchedV25=true;changed=true;try{runMatching()}catch(e){console.warn('v25 rematch',e)}}
+  if(changed)save();
+  return changed;
+}
+const _v25BootWithState=bootWithState;
+bootWithState=function(s){_v25BootWithState(s);try{if(migrateV25())renderAll()}catch(e){console.warn('v25 migrate',e)}};
+const _v25RenderAll=renderAll;
+renderAll=function(){v25ResetMemo();_v25RenderAll()};
 
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;

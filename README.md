@@ -1,10 +1,37 @@
-# Claudia Cash — v24
+# Claudia Cash — v25
 
 A personal safe-to-spend budget that answers one question: **what can I safely spend until next payday?** It runs as a single-file web app (PWA) on GitHub Pages, installs to the iPhone home screen, and is fed by CSV exports from Monarch.
 
 Your data is cached on the device (IndexedDB) and, when you sign in with Google, synced to your Supabase project so the phone and the Mac see the same budget.
 
 ---
+
+## What's new in v25
+
+### Credit cards with a new or second card number
+- A card can now follow more than one account name. **Edit** a card to set **Balance comes from** and **Also matches** (older card numbers).
+- When a card's balance has gone flat while an account with the same name pattern is still active (e.g. *Card (...9502)* frozen since February while *Card (...9468)* has the transactions), the card shows a warning with a one-tap **Use Card (...9468)**. The old number stays linked, so nothing is lost.
+- **Txns** now opens every number the card has used. The Transactions account filter has a *Credit cards* group for this. If a card has no transactions, it says so instead of quietly showing everything.
+
+### Accounts page shows everything
+- **Cash & bank accounts** (as before), then **Credit cards** (balance source, balance, limit, used, when the balance last changed, last transaction, status), then **Everything else in your data**: investments, loans, wallets, and excluded accounts, with Txns, Link, Track and Un-exclude buttons.
+
+### Bill matching is stricter
+- A transaction only marks a bill paid when it's money going out, falls within the date window of **that bill's due date in that cycle**, and the amount fits. Each transaction goes to the closest due date, so last cycle's payment can't mark this cycle's bill paid.
+- Card bills are only matched to payments from a bank account, never to a charge on a card.
+- Near misses (right name, wrong amount) show as **possible** with a **Check** status instead of being marked paid. Open one to confirm it, confirm and update the bill amount, or say no.
+
+### See the transaction behind a bill
+- **Dashboard:** tap a bill name or its Actual amount to see the matched transaction (date, merchant, account, category, difference from the amount due), with **Show in Transactions**, **Not this payment**, and other likely transactions to pick from.
+- **Bills tab:** new **Last paid** column. Tap it for the bill's payment history. Aliases shared by several bills (like "american express") are ignored there, so one payment doesn't show under three bills.
+
+### Subscriptions in Left to be paid
+- **Left to be paid** now includes subscriptions expected to come out of **cash** before next payday that aren't already Bills, so Safe to spend holds that money back.
+- Subscriptions on **credit cards** are shown as a note (with the total of all subscriptions) but not counted against cash.
+- The dashboard bills table has a **Subscriptions from cash** line. Tap **Left to be paid** for the breakdown and a switch to turn this off.
+
+### On first open
+- Auto-match re-runs once with the new rules. Bills you matched by hand are left alone.
 
 ## What's new in v24
 
@@ -108,9 +135,9 @@ Monarch records most PayPal purchases twice: once on the **PayPal** account ("Pa
 
 ## Publishing an update
 
-1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V24`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
+1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V25`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
 2. Commit and push.
-3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v24`), so the new build replaces the old one cleanly.
+3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v25`), so the new build replaces the old one cleanly.
 
 On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen**.
 
@@ -128,6 +155,7 @@ On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen
 
 | Version | Date | Highlights |
 |---|---|---|
+| v25 | Oct 26, 2026 | Cards follow reissued numbers; all accounts on Accounts; stricter bill matching with possible matches; bill → transaction view and Last paid; cash subscriptions in Left to be paid |
 | v24 | Oct 22, 2026 | Apple subscriptions from receipt emails; bundled Apple charges split into real apps |
 | v23 | Oct 22, 2026 | PayPal double entries skipped; clean PayPal merchant names |
 | v22 | Oct 22, 2026 | Monthly card-payment update, hover details, last charge, richer Needs attention, price/stale banners, merchant renames, balance by month, automatic backups |
