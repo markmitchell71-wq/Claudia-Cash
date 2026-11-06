@@ -157,6 +157,22 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 .l6row{display:grid;grid-template-columns:76px 1fr auto;gap:8px;padding:3px 0;border-top:1px dashed var(--line);align-items:baseline}
 .l6row:first-child{border-top:0}.l6row .l6sub{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .l6row .l6amt{font-weight:700;white-space:nowrap}.l6more{font-size:10.5px;color:var(--muted);margin-top:2px}
+.subtabs{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:14px}
+.subtab{all:unset;box-sizing:border-box;cursor:pointer;background:var(--cardbg);border:1px solid var(--line);border-radius:14px;padding:14px 16px;box-shadow:var(--shadow);transition:border-color .12s,transform .12s}
+.subtab:hover{border-color:var(--accent);transform:translateY(-1px)}.subtab.on{border:2px solid var(--accent);padding:13px 15px}
+.subtab .kpi-value{font-size:23px}
+@media(max-width:760px){.subtabs{gap:8px}.subtab{padding:10px}.subtab.on{padding:9px}.subtab .kpi-value{font-size:18px}.subtab .kpi-foot{font-size:10.5px}}
+.paysplit{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:6px}
+.paysplit button{all:unset;box-sizing:border-box;cursor:pointer;border:1px solid var(--line);border-radius:10px;padding:8px 10px}
+.paysplit button:hover{border-color:var(--accent)}.paysplit .kpi-value{font-size:20px;margin-top:2px}
+.l6row{grid-template-columns:76px 1fr auto 12px}.l6click{cursor:pointer;border-radius:6px}.l6click:hover{background:rgba(127,127,127,.12)}.l6go{color:var(--accent);font-weight:800;text-align:right}
+.attnmore{margin-top:6px}
+.attn .why .btn.small{padding:2px 9px;font-size:11px;margin-left:4px;vertical-align:1px}
+@media(max-width:760px){#subs .kpis{grid-template-columns:1fr 1fr!important}.paidwith{grid-column:1/-1;order:-1}}
+.paygroup{border:1px solid var(--line);border-radius:12px;padding:10px 12px;margin-bottom:10px}
+.payhead{display:flex;justify-content:space-between;align-items:flex-start;gap:10px;margin-bottom:4px}
+tr.clickrow{cursor:pointer}tr.clickrow:hover td{background:rgba(127,127,127,.08)}
+.ovl{display:flex;flex-wrap:wrap;gap:6px}.chip{all:unset;cursor:pointer;font-size:12px;border:1px solid var(--line);border-radius:999px;padding:4px 10px}.chip:hover{border-color:var(--accent)}
 .l6d{margin-top:4px;font-size:11px}.l6d>summary{cursor:pointer;color:var(--accent);font-weight:600;list-style:revert}
 @media(max-width:700px){.grid.kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 #appleCard details summary{padding:4px 0}
@@ -302,26 +318,41 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
     <section id="subs" class="section">
       <div class="topbar"><div><h1>Subscriptions</h1><div class="sub">Recurring services detected from your history, including ones billed through PayPal.</div></div>
       <div class="actions"><button class="btn" id="subsHiddenBtn" onclick="showIgnored()">Canceled &amp; hidden</button></div></div>
-      <div class="grid kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
-        <div class="card"><div class="kpi-label">Monthly total</div><div id="sMonthly" class="kpi-value">$0</div><div class="kpi-foot" id="sAnnual">$0/yr</div></div>
-        <div class="card"><div class="kpi-label">Active subscriptions</div><div id="sCount" class="kpi-value">0</div><div class="kpi-foot" id="sDecided"></div></div>
-        <div class="card" onclick="document.getElementById('subsAttnCard').scrollIntoView({behavior:'smooth'})"><div class="kpi-label">Needs attention</div><div id="sAttn" class="kpi-value">0</div><div class="kpi-foot">Tap to jump to the queue</div></div>
-        <div class="card"><div class="kpi-label">On high-APR cards</div><div id="sApr" class="kpi-value">$0</div><div class="kpi-foot" id="sAprFoot">per month at 20%+ APR</div></div>
-        <div class="card"><div class="kpi-label">Need review</div><div id="sFuzzy" class="kpi-value">0</div><div class="kpi-foot">Bundled Apple / PayPal charges</div></div>
+      <div class="subtabs" id="subTabs">
+        <button class="subtab on" data-t="attn" onclick="setSubTab('attn')"><div class="kpi-label">⚑ Needs attention</div><div id="sAttn" class="kpi-value">0</div><div class="kpi-foot" id="sAttnFoot"></div></button>
+        <button class="subtab" data-t="apple" onclick="setSubTab('apple')"><div class="kpi-label"> Apple subscriptions</div><div id="sAppleTab" class="kpi-value">$0</div><div class="kpi-foot" id="sAppleFoot"></div></button>
+        <button class="subtab" data-t="all" onclick="setSubTab('all')"><div class="kpi-label">All subscriptions</div><div id="sCount" class="kpi-value">0</div><div class="kpi-foot" id="sAllFoot"></div></button>
       </div>
+      <div class="grid kpis" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));margin-bottom:16px">
+        <div class="card" onclick="setSubTab('all')"><div class="kpi-label">Monthly total</div><div id="sMonthly" class="kpi-value">$0</div><div class="kpi-foot" id="sAnnual">$0/yr</div></div>
+        <div class="card paidwith" style="cursor:default;transform:none"><div class="kpi-label">Paid with</div><div class="paysplit">
+          <button onclick="openPayDetail('card')"><div class="muted" style="font-size:11px">💳 Cards</div><div id="sPayCard" class="kpi-value">$0</div><div class="kpi-foot" id="sPayCardFoot"></div></button>
+          <button onclick="openPayDetail('cash')"><div class="muted" style="font-size:11px">🏦 Cash</div><div id="sPayCash" class="kpi-value">$0</div><div class="kpi-foot" id="sPayCashFoot"></div></button></div></div>
+        <div class="card" onclick="setSubTab('attn');setTimeout(()=>{const e=document.getElementById('subsReview');if(e&&e.firstChild)e.scrollIntoView({behavior:'smooth'})},50)"><div class="kpi-label">Need review</div><div id="sFuzzy" class="kpi-value">0</div><div class="kpi-foot">Bundled Apple / PayPal charges</div></div>
+      </div>
+      <div data-pane="attn">
+      <div class="card" id="subsRenewals" style="margin-bottom:18px"></div>
       <div class="card" id="subsAttnCard" style="margin-bottom:18px">
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>⚑ Needs attention</h2><span class="muted" style="font-size:12px">Keep clears an item • Cancel moves it to Canceled &amp; hidden (it comes back if you're charged again) • Review keeps it here as a reminder • Hide removes it</span></div>
         <div id="subsAttn"></div>
       </div>
+      <div id="subsReview"></div>
+      </div>
+      <div data-pane="all" style="display:none">
+      <div class="card" id="subsOverlap" style="margin-bottom:18px"></div>
       <div class="card" style="margin-bottom:18px">
         <h2>By type</h2><div class="sub">Tap a type to filter the table. Three or more in one type is flagged as possible overlap.</div>
         <div id="subsTypes" style="margin-top:10px"></div>
       </div>
+      </div>
+      <div data-pane="apple" style="display:none">
       <div class="card" id="appleCard" style="margin-bottom:18px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap"><div><h2> Apple subscriptions</h2><div class="sub">From your Apple receipt emails. Each receipt is matched to the Apple Card or bank charge it explains, so bundled App Store charges show up as the real apps everywhere in the app.</div></div>
         <div class="actions"><button class="btn primary" onclick="openAppleAdd()">Add receipt</button><button class="btn" onclick="document.getElementById('apFile').click()">Import file</button><input id="apFile" type="file" accept=".json,application/json" style="display:none" onchange="importAppleFile(event)"><button class="btn" onclick="exportAppleFile()">Export</button><a class="btn" style="text-decoration:none" href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noopener">Manage on Apple ↗</a></div></div>
         <div id="appleBody"></div>
       </div>
+      </div>
+      <div data-pane="all" style="display:none">
       <div class="card" style="overflow:auto">
         <div class="subtools">
           <div><label>Sort</label><select id="subSort" class="input" onchange="renderSubs()"><option value="cost">Cost (high → low)</option><option value="next">Next charge</option><option value="last">Last charge (newest)</option><option value="name">Name</option><option value="type">Type (grouped)</option></select></div>
@@ -330,7 +361,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
         </div>
         <table><thead><tr><th>Service</th><th>Type</th><th>Charged to</th><th class="money">Amount</th><th>Cadence</th><th class="money">Per month</th><th>Last charge</th><th>Next charge</th><th>Decision</th><th></th></tr></thead><tbody id="subsBody"></tbody></table></div>
       <details class="card" id="subsHiddenCard" style="margin-top:18px"><summary style="cursor:pointer;font-weight:700">Canceled &amp; hidden (<span id="subsHiddenCount">0</span>)</summary><div class="sub" style="margin:6px 0 10px">Not counted in your totals or pay cycles. A canceled service reappears in Needs attention if a new charge shows up.</div><div id="subsHiddenBody"></div></details>
-      <div id="subsReview"></div>
+      </div>
       <div class="note" style="margin-top:14px">PayPal charges are resolved to the real vendor from the statement descriptor. App Store charges (Apple Card, or APPLE.COM BILL through PayPal) are split into individual apps using your Apple receipts — see Apple subscriptions above. Charges without a receipt stay as one bundled row.</div>
     </section>
 
@@ -448,6 +479,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <div><label>Decision</label><select id="subModalDec" class="input"><option value="">Undecided</option><option value="keep">Keep</option><option value="review">Review</option><option value="cancel">Cancel</option></select></div>
 <div><label>Type</label><select id="subModalType" class="input"></select></div>
 <div style="grid-column:1/-1"><label>Note (e.g. how to cancel, who uses it)</label><input id="subModalNote" class="input"></div>
+<div id="subModalExtra" style="grid-column:1/-1;display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px"></div>
 </div><div class="actions" style="margin-top:16px"><button class="btn primary" onclick="saveSubModal()">Save</button></div></div></div>
 <div id="billModal" class="modalback"><div class="modal"><div class="modalhead"><h2 id="billModalTitle">Add bill</h2><button class="btn small" onclick="closeModal('billModal')">Close</button></div>
 <input id="billEditId" type="hidden"><div class="formgrid">
@@ -536,7 +568,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v27'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v28'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -4312,6 +4344,337 @@ function migrateV26(){
 }
 const _v26BootWithState=bootWithState;
 bootWithState=function(st){_v26BootWithState(st);try{if(migrateV26()){save();renderAll()}}catch(e){console.warn('v26 migrate',e)}};
+
+/* ================= v28: Subscriptions page — tabs, clickable charges, cards vs cash, renewals, renames, moves, overlaps ================= */
+
+/* ---------- tabs ---------- */
+let _subTab=(()=>{try{return localStorage.getItem('cc_subTab')||'attn'}catch(e){return 'attn'}})();
+function setSubTab(t){
+  _subTab=t;try{localStorage.setItem('cc_subTab',t)}catch(e){}
+  v28ApplySubTab();
+  const top=$('subTabs');if(top&&top.scrollIntoView&&window.innerWidth<=760)top.scrollIntoView({behavior:'smooth',block:'start'});
+}
+function v28ApplySubTab(){
+  document.querySelectorAll('#subs [data-pane]').forEach(p=>{p.style.display=p.dataset.pane===_subTab?'':'none'});
+  document.querySelectorAll('#subTabs .subtab').forEach(b=>b.classList.toggle('on',b.dataset.t===_subTab));
+}
+showIgnored=function(){setSubTab('all');const el=$('subsHiddenCard');if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}};
+
+/* ---------- charge lists: every row opens the real transaction ---------- */
+function v28ChargeRow(x,d){
+  const amt=`<span class="l6amt ${d==='up'?'bad':d==='down'?'good':''}">${d==='up'?'▲ ':d==='down'?'▼ ':''}${money(x.amt)}</span>`;
+  return x.id
+    ?`<div class="l6row l6click" role="button" tabindex="0" title="Open this transaction" onclick="event.stopPropagation();openTxnDetail('${x.id}')"><span>${l6Date(x.date)}</span><span class="l6sub">${esc(x.sub||'')}</span>${amt}<span class="l6go">›</span></div>`
+    :`<div class="l6row"><span>${l6Date(x.date)}</span><span class="l6sub">${esc(x.sub||'')}</span>${amt}<span class="l6go muted" title="No matching bank charge yet">·</span></div>`;
+}
+last6List=function(items,total){
+  const L=items.slice(-6).reverse();if(!L.length)return '';
+  return `<div class="l6">${L.map((x,i)=>{const pv=L[i+1],d=pv&&Math.abs(x.amt-pv.amt)>=0.5?(x.amt>pv.amt?'up':'down'):'';return v28ChargeRow(x,d)}).join('')}${total>6?`<div class="l6more">Showing 6 of ${total} charges · tap one to open it</div>`:'<div class="l6more">Tap a charge to open it</div>'}</div>`;
+};
+subLast6=function(s){
+  const R=s.rows||[],multi=new Set(R.map(t=>t.account)).size>1;
+  return last6List(R.map(t=>({id:t.id,date:t.date,amt:Math.abs(Number(t.amount)),sub:multi?t.account:(t.merchant||t.account||'')})),R.length);
+};
+apLast6=function(a){
+  let M=null;try{M=appleMatch()}catch(e){}
+  return last6List((a.charges||[]).map(c=>{const t=M&&M.byRcpt.get(c.rid);return {id:t?t.id:'',date:c.date,amt:c.amt,sub:[c.plan,c.pay].filter(Boolean).join(' · ')}}),(a.charges||[]).length);
+};
+// Needs attention: the facts and the charge list fold into a dropdown, like the line items in the table
+const _v28SubFacts=subFacts;
+subFacts=function(s){
+  const n=s.rows.length;
+  return `<details class="l6d attnmore" onclick="event.stopPropagation()"><summary>Details &amp; last ${Math.min(6,n)} charge${n===1?'':'s'}</summary>${_v28SubFacts(s)}</details>`;
+};
+// transaction pop-up: show what an Apple charge paid for, and which subscription it belongs to
+const _v28OpenTxnDetail=openTxnDetail;
+openTxnDetail=function(tid){
+  _v28OpenTxnDetail(tid);
+  const t=state.transactions.find(x=>x.id===tid);if(!t||!$('kpiModalBody'))return;
+  let extra='';
+  try{
+    const r=appleReceiptForTxn(t);
+    if(r)extra+=`<div class="note" style="margin-top:12px"><strong> Apple receipt ${esc(r.id)}</strong> · ${shortDate(r.date)} · ${esc(r.pay)}<table style="margin-top:6px"><tbody>${appleItems(r).map(i=>`<tr><td>${esc(i.n)}<div class="muted" style="font-size:11px">${esc(i.p||'')}${i.c&&AP_CAD[i.c]?' · '+AP_CAD[i.c]:''}</div></td><td class="money">${money(i.amt)}</td></tr>`).join('')}</tbody></table></div>`;
+  }catch(e){}
+  try{
+    const subs=(_v26RawSubs||[]).filter(s=>s.rows.some(x=>x.id===tid));
+    if(subs.length)extra+=`<div class="muted" style="font-size:12px;margin-top:10px">Subscription: ${subs.map(s=>`<a href="#" onclick="event.preventDefault();closeModal('kpiModal');openSubModal('${s.key}')">${esc(s.vendor)}</a>`).join(', ')}</div>`;
+  }catch(e){}
+  if(extra)$('kpiModalBody').insertAdjacentHTML('beforeend',extra);
+};
+
+/* ---------- renamed services: link the old name to the new one ---------- */
+function v28Links(){if(!Array.isArray(state.subLinks))state.subLinks=[];return state.subLinks}
+function v28LinkMap(){const m=new Map();(state.subLinks||[]).forEach(l=>{if(l&&l.from&&l.to)m.set(norm(l.from),l.to)});return m}
+function v28LinkName(n){const m=v28LinkMap();if(!m.size)return n;let v=n;for(let i=0;i<4&&m.has(norm(v));i++)v=m.get(norm(v));return v}
+const _v28AppleItems=appleItems;
+appleItems=function(r){
+  const its=_v28AppleItems(r);
+  if(!(state.subLinks||[]).length)return its;
+  return its.map(i=>{const n=v28LinkName(i.n);return n===i.n?i:{...i,n,was:i.n}});
+};
+const _v28Canonical=canonical;
+canonical=function(v){return v28LinkName(_v28Canonical(v))};
+function linkSubs(fromName,toName){
+  if(!fromName||!toName||norm(fromName)===norm(toName))return;
+  const L=v28Links();
+  if(L.some(l=>norm(l.from)===norm(fromName)))L.forEach(l=>{if(norm(l.from)===norm(fromName))l.to=toName});
+  else L.push({from:fromName,to:toName,on:today()});
+  _apMatch.key='';save();renderAll();v26Toast(`Linked “${fromName}” → “${toName}”. Their charges now show as one subscription.`);
+}
+function unlinkSubs(fromName){
+  state.subLinks=v28Links().filter(l=>norm(l.from)!==norm(fromName));
+  _apMatch.key='';save();renderAll();v26Toast(`Unlinked “${fromName}”.`);
+}
+function dismissLinkSuggestion(a,b){
+  if(!Array.isArray(state.subLinkNo))state.subLinkNo=[];
+  state.subLinkNo.push(norm(a)+'>'+norm(b));save();renderAll();
+}
+// stopped Apple app + new Apple app sharing a distinctive word, started near when the old one stopped
+const V28_STOP_WORDS=new Set(['apple','plus','premium','basic','monthly','annual','yearly','the','and','app','pro','tv','unlimited','subscription']);
+function v28Words(n){return norm(n).split(/[^a-z0-9]+/).filter(w=>w.length>=4&&!V28_STOP_WORDS.has(w))}
+function v28RenameSuggestions(){
+  let A;try{A=appleApps()}catch(e){return []}
+  const no=new Set(state.subLinkNo||[]),out=[];
+  const stopped=A.apps.filter(a=>a.stopped),live=A.apps.filter(a=>!a.stopped);
+  live.forEach(b=>{
+    const wb=new Set(v28Words(b.name));if(!wb.size)return;
+    stopped.forEach(a=>{
+      if(no.has(norm(a.name)+'>'+norm(b.name)))return;
+      if(!v28Words(a.name).some(w=>wb.has(w)))return;
+      const gap=daysBetween(a.renews||a.lastDate,b.first);
+      if(gap<-20||gap>60)return;
+      out.push({from:a,to:b});
+    });
+  });
+  return out;
+}
+
+/* ---------- moving a subscription to a different account ---------- */
+function v28MoveTargets(){
+  const out=[];
+  (state.accounts||[]).filter(a=>a.include&&a.type!=='Credit'&&a.type!=='Investment'&&(a.match||'').trim()).forEach(a=>out.push({name:a.match,label:acctLabel(a),kind:'cash'}));
+  let rows=[];try{rows=cardRows().filter(r=>r.known)}catch(e){}
+  rows.sort((a,b)=>(a.apr||99)-(b.apr||99)).forEach(r=>out.push({name:r.src||r.name,label:r.name,kind:'card',apr:r.apr}));
+  return out;
+}
+function v28MoveTargetLabel(name){const t=v28MoveTargets().find(x=>x.name===name);return t?t.label:name}
+function v28VendorOf(t){return t._ap?t._ap.n:canonical(resolveVendor(t).vendor)}
+function v28MoveStatus(s){
+  const o=subOvPeek(s.key);if(!o.moveTo)return null;
+  const since=o.moveSince||'0000',want=norm(s.vendor);
+  let list=state.transactions.filter(t=>t.date>since&&Number(t.amount)<0&&!isMirrorTxn(t));
+  try{list=appleExpandRows(list)}catch(e){}
+  const hits=list.filter(t=>norm(v28VendorOf(t))===want).sort((a,b)=>a.date.localeCompare(b.date));
+  const toNew=hits.filter(t=>t.account===o.moveTo),toOld=hits.filter(t=>t.account!==o.moveTo);
+  if(toNew.length)return {state:'done',t:toNew.at(-1),o};
+  if(toOld.length)return {state:'still',t:toOld.at(-1),o};
+  return {state:'pending',o};
+}
+function finishMove(key){
+  const s=(_v26RawSubs||[]).find(x=>x.key===key)||detectSubs().find(x=>x.key===key);
+  const o=subOv(key),to=o.moveTo;
+  delete o.moveTo;delete o.moveSince;delete o.moveFrom;
+  // a non-Apple subscription starts a new row on the new account; retire the old one
+  if(s&&!s.apple&&s.account!==to){o.ignored=true;o.note=(o.note?o.note+' · ':'')+'moved to '+v28MoveTargetLabel(to)}
+  save();renderAll();v26Toast('Move recorded.');
+}
+function cancelMove(key){const o=subOv(key);delete o.moveTo;delete o.moveSince;delete o.moveFrom;save();renderAll()}
+
+/* ---------- Needs attention: extra reasons ---------- */
+const _v28SubAttention=subAttention;
+subAttention=function(s,all){
+  let out=_v28SubAttention(s,all);
+  const mv=v28MoveStatus(s);
+  if(mv){
+    out=out.filter(r=>!/^No charge since/.test(r.text)&&!/Consider moving it/.test(r.text));
+    const to=esc(v28MoveTargetLabel(mv.o.moveTo));
+    if(mv.state==='done')out.unshift({lvl:'good',text:`Moved to ${to} ✓ — charged there ${shortDate(mv.t.date)} (${money(Math.abs(mv.t.amount))}). <button class="btn small" onclick="finishMove('${s.key}')">Done</button>`});
+    else if(mv.state==='still')out.unshift({lvl:'bad',text:`Still billed to ${esc(mv.t.account)} on ${shortDate(mv.t.date)}, after you set the move to ${to} (${shortDate(mv.o.moveSince)}). Update the payment method with ${esc(s.vendor)}. <button class="btn small" onclick="cancelMove('${s.key}')">Stop tracking</button>`});
+    else out.unshift({lvl:'info',text:`Moving billing to ${to} — waiting for the next charge${s.cadence!=='Multiple/mo'?` (due ${shortDate(s.next)})`:''}. <button class="btn small" onclick="cancelMove('${s.key}')">Stop tracking</button>`});
+  }else{
+    out=out.map(r=>/Consider moving it/.test(r.text)?{...r,text:r.text+` <button class="btn small" onclick="openSubModal('${s.key}','move')">Move…</button>`}:r);
+  }
+  if(s.apple){
+    v28RenameSuggestions().filter(x=>norm(x.to.name)===norm(s.vendor)).forEach(x=>{
+      out.push({lvl:'warn',text:`Looks like the renamed version of “${esc(x.from.name)}” (last ${money(x.from.price)}, now ${money(x.to.price)}). Link them to keep one history. <button class="btn small" onclick="linkSubs(${esc(JSON.stringify(x.from.name)).replace(/"/g,'&quot;')},${esc(JSON.stringify(x.to.name)).replace(/"/g,'&quot;')})">Link</button> <button class="btn small" onclick="dismissLinkSuggestion(${esc(JSON.stringify(x.from.name)).replace(/"/g,'&quot;')},${esc(JSON.stringify(x.to.name)).replace(/"/g,'&quot;')})">Not the same</button>`});
+    });
+  }
+  return out;
+};
+
+/* ---------- Manage modal: same service as…, move billing to… ---------- */
+function v28SubNameOptions(s){
+  const names=new Map();
+  try{appleApps().apps.forEach(a=>names.set(norm(a.name),a.name))}catch(e){}
+  (_v26RawSubs||[]).forEach(x=>names.set(norm(x.vendor),x.vendor));
+  try{v26HiddenSubs().forEach(x=>names.set(norm(x.vendor),x.vendor))}catch(e){}
+  names.delete(norm(s.vendor));
+  return [...names.values()].sort((a,b)=>a.localeCompare(b));
+}
+const _v28OpenSubModal=openSubModal;
+openSubModal=function(key,focus){
+  _v28OpenSubModal(key);
+  const s=detectSubs().find(x=>x.key===key)||(_v26RawSubs||[]).find(x=>x.key===key);if(!s||!$('subModalExtra'))return;
+  const o=subOvPeek(key),links=v28Links().filter(l=>norm(l.to)===norm(s.vendor));
+  const tg=v28MoveTargets().filter(t=>t.name!==s.account);
+  const mv=v28MoveStatus(s);
+  $('subModalExtra').innerHTML=`
+    <div><label>Move billing to</label><select id="subModalMove" class="input"><option value="">— keep on ${esc(s.account)} —</option>
+      <optgroup label="Cash">${tg.filter(t=>t.kind==='cash').map(t=>`<option value="${esc(t.name)}" ${o.moveTo===t.name?'selected':''}>${esc(t.label)}</option>`).join('')}</optgroup>
+      <optgroup label="Cards (lowest APR first)">${tg.filter(t=>t.kind==='card').map(t=>`<option value="${esc(t.name)}" ${o.moveTo===t.name?'selected':''}>${esc(t.label)}${t.apr?` · ${t.apr}%`:''}</option>`).join('')}</optgroup></select>
+      <div class="muted" style="font-size:11px;margin-top:4px">${mv?(mv.state==='done'?'✓ First charge on the new account found.':mv.state==='still'?'⚠ Still being charged on the old account.':`Tracking since ${shortDate(o.moveSince)} — change the card with ${esc(s.vendor)}, then the app confirms it on the next charge.`):'Change the payment method with the company first; the app then watches for the next charge.'}</div></div>
+    <div><label>Same service as (merge history)</label><select id="subModalLink" class="input"><option value="">—</option>${v28SubNameOptions(s).map(n=>`<option value="${esc(n)}">${esc(n)}</option>`).join('')}</select>
+      <div class="muted" style="font-size:11px;margin-top:4px">${links.length?'Linked: '+links.map(l=>`${esc(l.from)} <a href="#" onclick="event.preventDefault();unlinkSubs(${esc(JSON.stringify(l.from)).replace(/"/g,'&quot;')});closeModal('subModal')">unlink</a>`).join(' · '):'Use when a service was renamed or changed plans, so the old charges count as this one.'}</div></div>`;
+  if(focus==='move'&&$('subModalMove'))setTimeout(()=>{try{$('subModalMove').focus()}catch(e){}},50);
+};
+const _v28SaveSubModal=saveSubModal;
+saveSubModal=function(){
+  const key=$('subModalKey').value,s=detectSubs().find(x=>x.key===key)||(_v26RawSubs||[]).find(x=>x.key===key);
+  const mv=$('subModalMove')?$('subModalMove').value:'',ln=$('subModalLink')?$('subModalLink').value:'';
+  const o=subOv(key);
+  if(mv!==(o.moveTo||'')){if(mv){o.moveTo=mv;o.moveSince=today();o.moveFrom=s?s.account:''}else{delete o.moveTo;delete o.moveSince;delete o.moveFrom}}
+  _v28SaveSubModal();
+  if(ln&&s)linkSubs(ln,s.vendor);
+};
+
+/* ---------- cards vs cash ---------- */
+function v28PayKind(s){return isPayPalAcct(s.account)?'cash':(subOnCard(s)?'card':'cash')}
+function v28CashGroup(s){
+  if(isPayPalAcct(s.account))return 'PayPal';
+  const a=acctForTxnName(s.account);return a?acctLabel(a):s.account;
+}
+function v28PaySplit(subs){
+  const card=subs.filter(s=>v28PayKind(s)==='card'),cash=subs.filter(s=>v28PayKind(s)==='cash');
+  const sum=l=>l.reduce((a,s)=>a+s.monthly,0);
+  const hi=card.filter(s=>{const ci=subCardInfo(s);return ci&&ci.apr>=SUB_APR_HIGH});
+  return {card,cash,cardM:sum(card),cashM:sum(cash),hi,hiM:sum(hi)};
+}
+function v28SubLine(s,extra){
+  const o=subOvPeek(s.key),mv=o.moveTo?`<span class="pill mid" title="Moving billing">→ ${esc(v28MoveTargetLabel(o.moveTo))}</span>`:'';
+  return `<tr class="clickrow" onclick="closeModal('kpiModal');openSubModal('${s.key}')"><td><strong>${esc(s.vendor)}</strong> ${o.decision?decPill(o.decision):''} ${mv}<div class="muted" style="font-size:11px">${money(s.amount)} ${esc(s.cadence.toLowerCase())}${s.cadence!=='Multiple/mo'?` · next ${shortDate(s.next)}`:''}${s.priceUp?` · <span class="bad">▲ was ${money(s.priorAmount)}</span>`:''}</div>${extra||''}</td><td class="money">${money(s.monthly)}<div class="muted" style="font-size:10px">/mo</div></td></tr>`;
+}
+function openPayDetail(kind){
+  const subs=detectSubs(),P=v28PaySplit(subs);
+  const sw=`<div class="actions" style="margin-bottom:12px"><button class="btn small${kind==='card'?' on':''}" onclick="openPayDetail('card')">Cards · ${money(P.cardM)}/mo</button><button class="btn small${kind==='cash'?' on':''}" onclick="openPayDetail('cash')">Cash · ${money(P.cashM)}/mo</button></div>`;
+  let body='';
+  if(kind==='card'){
+    const g={};P.card.forEach(s=>{const ci=subCardInfo(s)||{name:s.account,apr:0};const k=ci.name;(g[k]=g[k]||{name:k,apr:ci.apr,subs:[],m:0});g[k].subs.push(s);g[k].m+=s.monthly});
+    let rows=[];try{rows=cardRows()}catch(e){}
+    const list=Object.values(g).sort((a,b)=>(b.apr>=SUB_APR_HIGH)-(a.apr>=SUB_APR_HIGH)||b.m-a.m);
+    const yrInt=P.hi.reduce((a,s)=>{const ci=subCardInfo(s);return a+s.monthly*12*ci.apr/100/2},0);
+    body=`<div class="note" style="margin-bottom:12px">${P.card.length} subscription${P.card.length===1?'':'s'} on cards. <strong>${money(P.hiM)}/mo</strong> sits on cards at ${SUB_APR_HIGH}%+ APR — roughly <strong>${money(yrInt)}/yr</strong> in interest if those balances carry. Tap one to move it to checking or cancel it.</div>`+
+      list.map(c=>{const r=rows.find(x=>x.name===c.name);return `<div class="paygroup"><div class="payhead"><div><strong>${esc(c.name)}</strong> ${c.apr?`<span class="pill ${c.apr>=SUB_APR_HIGH?'high':'paid'}">${c.apr}% APR</span>`:'<span class="pill">APR not set</span>'}${r&&r.bal?`<div class="muted" style="font-size:11px">${money(r.bal)} balance${r.limit?` of ${money(r.limit)}`:''}</div>`:''}</div><strong>${money(c.m)}/mo</strong></div>
+        <table><tbody>${c.subs.sort((a,b)=>b.monthly-a.monthly).map(s=>v28SubLine(s)).join('')}</tbody></table></div>`}).join('');
+  }else{
+    const g={};P.cash.forEach(s=>{const k=v28CashGroup(s);(g[k]=g[k]||{name:k,subs:[],m:0});g[k].subs.push(s);g[k].m+=s.monthly});
+    const list=Object.values(g).sort((a,b)=>b.m-a.m),max=Math.max(1,...list.map(x=>x.m));
+    body=`<div class="note" style="margin-bottom:12px">${P.cash.length} subscription${P.cash.length===1?'':'s'} paid from cash — no interest. PayPal is shown on its own.</div>`+
+      list.map(c=>`<div class="paygroup"><div class="payhead"><strong>${esc(c.name)}</strong><strong>${money(c.m)}/mo</strong></div><div class="bar" style="margin:4px 0 6px"><span style="width:${(c.m/max*100).toFixed(1)}%"></span></div>
+        <table><tbody>${c.subs.sort((a,b)=>b.monthly-a.monthly).map(s=>v28SubLine(s)).join('')}</tbody></table></div>`).join('');
+  }
+  $('kpiModalTitle').textContent=kind==='card'?'Subscriptions on cards':'Subscriptions paid with cash';
+  $('kpiModalBody').innerHTML=sw+(body||'<div class="empty">None.</div>');
+  openModal('kpiModal');
+}
+
+/* ---------- renewals in the next 14 days ---------- */
+function v28CycleFor(d){const s=v26Sorted();return [...s].reverse().find(c=>c.date<=d)||null}
+function v28Renewals(subs,days){
+  const td=today(),end=addDays(td,days||14);
+  return subs.filter(s=>s.cadence!=='Multiple/mo'&&s.next>=td&&s.next<=end).sort((a,b)=>a.next.localeCompare(b.next));
+}
+function renderRenewals(subs){
+  const el=$('subsRenewals');if(!el)return [];
+  const list=v28Renewals(subs,14),live=v26LiveCycle();
+  const tot=list.filter(s=>subOvPeek(s.key).decision!=='cancel').reduce((a,s)=>a+s.amount,0);
+  el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h2>🗓 Renewing in the next 14 days</h2><strong>${money(tot)}</strong></div>
+    <div class="sub" style="margin-bottom:8px">Cancel before the date to avoid the charge. Tap a row to manage it.</div>
+    ${list.length?`<table><tbody>${list.map(s=>{const o=subOvPeek(s.key),c=v28CycleFor(s.next),du=daysUntil(s.next);
+      const cyc=c?(live&&c.id===live.id?'this pay cycle':`pay cycle ${v26CycleLabel(c)}`):'';
+      return `<tr class="clickrow" onclick="openSubModal('${s.key}')"><td style="white-space:nowrap"><strong>${shortDate(s.next)}</strong><div class="muted" style="font-size:10px">${du===0?'today':`in ${du}d`}</div></td>
+        <td><strong>${esc(s.vendor)}</strong> ${o.decision==='cancel'?'<span class="pill high">Cancel it before this</span>':o.decision?decPill(o.decision):''}${s.priceUp?' <span class="pill high">▲ price up</span>':''}<div class="muted" style="font-size:11px">${esc(s.account)}${cyc?` · ${cyc}`:''}</div></td>
+        <td class="money">${money(s.amount)}<div class="muted" style="font-size:10px">${esc(s.cadence.toLowerCase())}</div></td></tr>`}).join('')}</tbody></table>`:'<div class="muted">Nothing renews in the next two weeks.</div>'}`;
+  return list;
+}
+
+/* ---------- overlapping services ---------- */
+const V28_OVERLAP=[
+  ['Streaming',s=>subType(s)==='Streaming'],
+  ['Music',s=>subType(s)==='Music & Audio'],
+  ['AI assistants',s=>/chatgpt|openai|anthropic|claude|perplexity|gemini|grok/.test(norm(s.vendor))||(/copilot/.test(norm(s.vendor))&&!/money/.test(norm(s.vendor)))],
+  ['Cloud storage',s=>subType(s)==='Cloud & Storage'],
+  ['Dating & social',s=>subType(s)==='Social & Dating'],
+  ['Money apps',s=>/monarch|rocket money|copilot money|ynab|kudos/.test(norm(s.vendor))],
+];
+function v28Overlaps(subs){
+  const ok=(state.settings&&state.settings.overlapOk)||{};
+  return V28_OVERLAP.map(([name,f])=>{
+    const l=subs.filter(s=>subOvPeek(s.key).decision!=='cancel'&&f(s)).sort((a,b)=>b.monthly-a.monthly);
+    const sig=l.map(s=>norm(s.vendor)).sort().join('|');
+    return {name,list:l,m:l.reduce((a,s)=>a+s.monthly,0),sig,ok:ok[name]===sig};
+  }).filter(g=>g.list.length>=2);
+}
+function overlapOk(name,sig){state.settings.overlapOk=state.settings.overlapOk||{};state.settings.overlapOk[name]=sig;save();renderAll()}
+function overlapReset(){state.settings.overlapOk={};save();renderAll()}
+function renderOverlaps(subs){
+  const el=$('subsOverlap');if(!el)return [];
+  const all=v28Overlaps(subs),open=all.filter(g=>!g.ok),done=all.filter(g=>g.ok);
+  el.innerHTML=`<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px;flex-wrap:wrap"><h2>⧉ Paying twice?</h2>${done.length?`<button class="btn small" onclick="overlapReset()">Show ${done.length} reviewed</button>`:''}</div>
+    <div class="sub" style="margin-bottom:8px">Services that do the same job. Keep the ones you use; “Looks fine” clears a group until something new joins it.</div>
+    ${open.length?open.map(g=>`<div class="paygroup"><div class="payhead"><div><strong>${g.name}</strong> <span class="muted">· ${g.list.length}</span></div><div><strong>${money(g.m)}/mo</strong> <span class="muted" style="font-size:11px">${money(g.m*12)}/yr</span></div></div>
+      <div class="ovl">${g.list.map(s=>`<button class="chip" onclick="openSubModal('${s.key}')">${esc(s.vendor)} <b>${money(s.monthly)}</b>${subOvPeek(s.key).decision?` · ${subOvPeek(s.key).decision}`:''}</button>`).join('')}</div>
+      <div class="actions" style="margin-top:6px"><button class="btn small" onclick="overlapOk('${g.name}','${g.sig.replace(/'/g,"\\'")}')">Looks fine</button></div></div>`).join(''):'<div class="muted">No overlapping services right now.</div>'}`;
+  return open;
+}
+
+/* ---------- Apple prices come from receipts: a cheaper plan shows its new price ---------- */
+const _v28DetectSubs=detectSubs;
+detectSubs=function(all){
+  const out=_v28DetectSubs(all);
+  out.forEach(s=>{
+    if(!s.apple||s.priceUp||!s.rows.length)return;
+    const recent=Math.abs(Number(s.rows.at(-1).amount));
+    if(Math.abs(recent-s.amount)>=0.5&&s.amount>0){s.monthly=s.monthly*recent/s.amount;s.priorAmount=s.amount;s.amount=recent;s.priceDown=true}
+  });
+  return out;
+};
+
+/* ---------- render ---------- */
+const _v28RenderSubs=renderSubs;
+renderSubs=function(){
+  _v28RenderSubs();
+  if(!$('subTabs'))return;
+  const subs=detectSubs();
+  // tab boxes
+  const ren=renderRenewals(subs),ovl=renderOverlaps(subs);
+  const ups=subs.filter(s=>s.priceUp&&!(subOvPeek(s.key).decision==='keep'&&(subOvPeek(s.key).decidedOn||'')>=s.last)&&subOvPeek(s.key).decision!=='cancel');
+  if($('sAttnFoot'))$('sAttnFoot').innerHTML=[ren.length?`${ren.length} renew in 14 days`:'',ups.length?`<span class="bad">${ups.length} price increase${ups.length===1?'':'s'}</span>`:''].filter(Boolean).join(' · ')||'All clear';
+  try{
+    const A=appleApps(),act=A.apps.filter(a=>!a.stopped),mo=act.reduce((a,x)=>a+x.monthly,0);
+    if($('sAppleTab'))$('sAppleTab').textContent=money(mo);
+    if($('sAppleFoot'))$('sAppleFoot').textContent=(state.appleReceipts||[]).length?`/mo · ${act.length} active · receipts to ${shortDate(A.latest)}`:'Add receipts to split App Store charges';
+  }catch(e){}
+  if($('sAllFoot'))$('sAllFoot').innerHTML=`${money(subs.reduce((a,s)=>a+s.monthly,0))}/mo · ${subs.filter(s=>subOvPeek(s.key).decision).length} of ${subs.length} decided${ovl.length?` · <span class="warn">${ovl.length} overlap${ovl.length===1?'':'s'}</span>`:''}`;
+  // cards vs cash
+  const P=v28PaySplit(subs);
+  if($('sPayCard')){$('sPayCard').textContent=money(P.cardM);$('sPayCard').className='kpi-value '+(P.hiM>0?'warn':'')}
+  if($('sPayCardFoot'))$('sPayCardFoot').textContent=`${P.card.length} subs${P.hiM?` · ${money(P.hiM)} at ${SUB_APR_HIGH}%+ APR`:''}`;
+  if($('sPayCash')){$('sPayCash').textContent=money(P.cashM);$('sPayCash').className='kpi-value good'}
+  if($('sPayCashFoot'))$('sPayCashFoot').textContent=`${P.cash.length} subs · BOA, Delta, Chase, PayPal`;
+  v28ApplySubTab();
+};
+
+/* ---------- migration ---------- */
+function migrateV28(){
+  let ch=false;
+  if(!Array.isArray(state.subLinks)){state.subLinks=[];ch=true}
+  if(!Array.isArray(state.subLinkNo)){state.subLinkNo=[];ch=true}
+  if(state.settings&&!state.settings.overlapOk){state.settings.overlapOk={};ch=true}
+  return ch;
+}
+const _v28BootWithState=bootWithState;
+bootWithState=function(st){_v28BootWithState(st);try{if(migrateV28())save()}catch(e){console.warn('v28 migrate',e)}};
+
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
 document.getElementById('settingsVer').textContent='App version '+APP_VERSION;
