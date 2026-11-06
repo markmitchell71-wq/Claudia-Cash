@@ -187,6 +187,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
         <div><h1>Budget Dashboard</h1><div class="sub">Your main question: what can I safely spend until next payday?</div></div>
         <div class="actions"><button class="btn" onclick="openTxnImport()">Import Transactions</button><button class="btn" onclick="openBalanceImport()">Import balances</button><button class="btn primary" onclick="openBalanceModal()">Update balances</button></div>
       </div>
+      <div id="pastCycleBanner" style="display:none;margin-bottom:14px"></div>
       <div id="transferBanner" style="display:none;margin-bottom:14px"></div>
       <div id="paycheckFlag" style="display:none;margin-bottom:14px"></div>
       <div id="subsRenewalBanner" style="display:none;margin-bottom:14px"></div>
@@ -214,10 +215,11 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
       </div>
       <div class="grid two">
         <div class="card">
-          <div style="display:flex;justify-content:space-between;align-items:center"><h2>This pay cycle</h2><button class="btn small" onclick="showTab('cycles')">Manage</button></div>
+          <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap"><h2 id="cycleCardTitle">This pay cycle</h2><div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap"><span id="cycleNav" style="display:flex;gap:6px;align-items:center"></span><button class="btn small" onclick="showTab('cycles')">Manage</button></div></div>
           <div class="progress"><div id="paidProgress"></div></div>
           <div class="sub" id="cycleSummary"></div>
           <div style="overflow:auto;margin-top:10px"><table><thead><tr><th>Bill</th><th>Due</th><th class="money">Amount Due</th><th class="money">Actual</th><th>Status</th><th></th></tr></thead><tbody id="dashBills"></tbody></table></div>
+          <div id="cycleRecap"></div>
         </div>
         <div class="card">
           <h2>Cash accounts</h2><div id="accountCards"></div>
@@ -294,7 +296,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 
     <section id="subs" class="section">
       <div class="topbar"><div><h1>Subscriptions</h1><div class="sub">Recurring services detected from your history, including ones billed through PayPal.</div></div>
-      <div class="actions"><button class="btn" onclick="showIgnored()">Hidden items</button></div></div>
+      <div class="actions"><button class="btn" id="subsHiddenBtn" onclick="showIgnored()">Canceled &amp; hidden</button></div></div>
       <div class="grid kpis" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr))">
         <div class="card"><div class="kpi-label">Monthly total</div><div id="sMonthly" class="kpi-value">$0</div><div class="kpi-foot" id="sAnnual">$0/yr</div></div>
         <div class="card"><div class="kpi-label">Active subscriptions</div><div id="sCount" class="kpi-value">0</div><div class="kpi-foot" id="sDecided"></div></div>
@@ -303,7 +305,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
         <div class="card"><div class="kpi-label">Need review</div><div id="sFuzzy" class="kpi-value">0</div><div class="kpi-foot">Bundled Apple / PayPal charges</div></div>
       </div>
       <div class="card" id="subsAttnCard" style="margin-bottom:18px">
-        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>⚑ Needs attention</h2><span class="muted" style="font-size:12px">Decide Keep, Review, or Cancel to clear an item</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2>⚑ Needs attention</h2><span class="muted" style="font-size:12px">Keep clears an item • Cancel moves it to Canceled &amp; hidden (it comes back if you're charged again) • Review keeps it here as a reminder • Hide removes it</span></div>
         <div id="subsAttn"></div>
       </div>
       <div class="card" style="margin-bottom:18px">
@@ -322,6 +324,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
           <div><label>Type</label><select id="subFilterType" class="input" onchange="renderSubs()"><option value="">All types</option></select></div>
         </div>
         <table><thead><tr><th>Service</th><th>Type</th><th>Charged to</th><th class="money">Amount</th><th>Cadence</th><th class="money">Per month</th><th>Last charge</th><th>Next charge</th><th>Decision</th><th></th></tr></thead><tbody id="subsBody"></tbody></table></div>
+      <details class="card" id="subsHiddenCard" style="margin-top:18px"><summary style="cursor:pointer;font-weight:700">Canceled &amp; hidden (<span id="subsHiddenCount">0</span>)</summary><div class="sub" style="margin:6px 0 10px">Not counted in your totals or pay cycles. A canceled service reappears in Needs attention if a new charge shows up.</div><div id="subsHiddenBody"></div></details>
       <div id="subsReview"></div>
       <div class="note" style="margin-top:14px">PayPal charges are resolved to the real vendor from the statement descriptor. App Store charges (Apple Card, or APPLE.COM BILL through PayPal) are split into individual apps using your Apple receipts — see Apple subscriptions above. Charges without a receipt stay as one bundled row.</div>
     </section>
@@ -528,7 +531,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v25'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v26'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -1605,6 +1608,7 @@ function detectSubs(all){
       monthly:g.apple&&g.apLast&&g.apLast.c==='w'?curAmt*52/12:cadence==='Multiple/mo'?curAmt*per:(cadence==='Annual/irregular'?curAmt/12:curAmt),
       ignored:!!ov.ignored,catHit,nameHit});
   });
+  if(!all)_v26RawSubs=out;
   return out.filter(s=>!s.ignored).sort((a,b)=>b.monthly-a.monthly);
 }
 function toggleIgnoreSub(key){
@@ -1735,7 +1739,7 @@ function renderSubs(){
   if($('subsAttn'))$('subsAttn').innerHTML=attn.length?attn.map(({s,r})=>`<div class="attn">
       <div style="flex:1;min-width:220px"><strong>${esc(s.vendor)}</strong> <span class="muted" style="font-size:12px">${money(s.monthly)}/mo • ${esc(s.account)}</span> ${subOvPeek(s.key).decision?decPill(subOvPeek(s.key).decision):''}
         ${r.map(x=>`<div class="why"><span class="dot ${x.lvl}"></span>${x.text}</div>`).join('')}${typeof subFacts==='function'?subFacts(s):''}</div>
-      <div class="acts">${decButtons(s.key)}${r.some(x=>x.hideBtn)?`<button class="btn small" onclick="toggleIgnoreSub('${s.key}')">Hide</button>`:''}<button class="btn small" onclick="openSubModal('${s.key}')">Manage</button></div>
+      <div class="acts">${decButtons(s.key)}<button class="btn small" onclick="toggleIgnoreSub('${s.key}')">Hide</button><button class="btn small" onclick="openSubModal('${s.key}')">Manage</button></div>
     </div>`).join(''):'<div class="note">Nothing needs attention right now. 🎉</div>';
   // by type
   const byType={};subs.forEach(s=>{const t=subType(s);(byType[t]=byType[t]||{t,n:0,m:0,names:[]});byType[t].n++;byType[t].m+=s.monthly;byType[t].names.push(s.vendor)});
@@ -4089,6 +4093,205 @@ bootWithState=function(s){_v25BootWithState(s);try{if(migrateV25())renderAll()}c
 const _v25RenderAll=renderAll;
 renderAll=function(){v25ResetMemo();_v25RenderAll()};
 
+
+
+/* ============================================================
+   v26
+   1. Look back at any pay cycle from the dashboard (◀ ▶), with a
+      recap of what cleared, what cleared late and what's still out.
+   2. Card-bill matching only counts real payments: purchases
+      (APPLE.COM BILL, PayPal purchases), ATM withdrawals and
+      interest charges can no longer pay a credit card bill.
+   3. Subscriptions: Cancel moves an item out of the list into
+      "Canceled & hidden" (it comes back if you're charged again);
+      Hide works from the attention queue; hidden items restore
+      one at a time.
+   ============================================================ */
+
+/* ---------- 2. card payment matching ---------- */
+const V26_PAY_RE=/\b(payments?|pmt|autopay|auto pay|epay|epayment|e-payment|crcardpmt|bill ?pay|thank you)\b|ach withdrawal/i;
+const V26_NOT_PAY_RE=/\batm\b|withdrwl|interest charge|transfer to (sav|chk)|apple cash|des:purchase|\bpurchase\b|apple\.com|apple services|itunes|checkcard|\bpos\b|cash advance|\bfees?\b/i;
+// true when a transaction reads like paying a credit card (not a purchase, ATM cash or interest)
+function v26CardPaymentLike(t){
+  const txt=[t.statement,t.merchant,t.origMerchant].filter(Boolean).join(' ');
+  const cat=String(t.category||'');
+  if(V26_NOT_PAY_RE.test(txt))return false;
+  if(/cash & atm|interest|fee/i.test(cat))return false;
+  if(V26_PAY_RE.test(txt))return true;
+  // no bank text to go on: fall back to the category (Monarch's category alone isn't trusted when there is text)
+  return !String(t.statement||'').trim()&&/credit card payment/i.test(cat);
+}
+const _v26Fit=v25Fit;
+v25Fit=function(a,b,c,t){
+  if(isCardBill(b)&&!v26CardPaymentLike(t))return null;
+  return _v26Fit(a,b,c,t);
+};
+const _v26Candidates=v25Candidates;
+v25Candidates=function(a,b,c){
+  const card=isCardBill(b);
+  const due=v25DueDate(c,b),win=Number(state.settings.dateWindow||7)+7;
+  if(!card)return _v26Candidates(a,b,c);
+  return state.transactions.filter(t=>Number(t.amount)<0&&v25NameHit(b,t).hit&&v26CardPaymentLike(t)&&!isCardAcctName(t.account)&&Math.abs(v25Days(due,t.date))<=win&&t.id!==a.matchedTxnId)
+    .sort((x,y)=>Math.abs(v25Days(due,x.date))-Math.abs(v25Days(due,y.date))).slice(0,6);
+};
+const _v26BillPayments=v25BillPayments;
+v25BillPayments=function(b){
+  const out=_v26BillPayments(b);
+  return isCardBill(b)?out.filter(p=>p.how==='matched'||v26CardPaymentLike(p.t)):out;
+};
+const _v26CardPaymentsInMonth=cardPaymentsInMonth;
+cardPaymentsInMonth=function(b,mk,byId){
+  const out=_v26CardPaymentsInMonth(b,mk,byId);
+  if(!out.some(p=>p.how==='alias'))return out;
+  const txns=state.transactions.filter(t=>monthKey(t.date)===mk);
+  return out.filter(p=>{if(p.how!=='alias')return true;const t=txns.find(x=>x.date===p.date&&Math.abs(Number(x.amount))===p.amount&&x.merchant===p.merchant);return !t||v26CardPaymentLike(t)});
+};
+// manual matches on a card bill that don't look like a payment (shown as a warning in the bill detail)
+function v26SuspectManual(a){
+  if(!a||!a.manual||!a.matchedTxnId)return null;
+  const b=state.bills.find(x=>x.id===a.billId);if(!isCardBill(b))return null;
+  const t=state.transactions.find(x=>x.id===a.matchedTxnId);
+  return t&&!v26CardPaymentLike(t)?t:null;
+}
+const _v26OpenBillTxn=openBillTxn;
+openBillTxn=function(aid){
+  _v26OpenBillTxn(aid);
+  const a=state.assignments.find(x=>x.id===aid),t=v26SuspectManual(a);
+  if(t&&$('kpiModalBody'))$('kpiModalBody').insertAdjacentHTML('afterbegin',`<div class="alertrow warn" style="margin-bottom:10px"><div><strong>This doesn't look like a card payment</strong><div class="muted" style="font-size:12px">${esc(t.statement||t.merchant)} • ${esc(t.category||'')}. You matched it by hand — if it's wrong, tap "Not this payment".</div></div></div>`);
+};
+
+/* ---------- 1. pay cycle look-back ---------- */
+function v26Sorted(){return state.cycles.slice().sort((a,b)=>a.date.localeCompare(b.date))}
+function v26LiveCycle(){const s=v26Sorted();return [...s].reverse().find(x=>x.date<=today())||s[0]}
+function v26CycleEnd(c){const n=nextCycle(c.date);return n?addDays(n.date,-1):addDays(c.date,13)}
+function v26CycleLabel(c){return `${fmtDate(c.date).replace(/, \d{4}/,'')} – ${fmtDate(v26CycleEnd(c))}`}
+function v26IsPast(c){const n=nextCycle(c.date);return !!n&&n.date<=today()}
+function shiftCycle(d){
+  const s=v26Sorted(),cur=currentCycle();if(!cur)return;
+  const i=s.findIndex(x=>x.id===cur.id),n=s[Math.max(0,Math.min(s.length-1,i+d))];if(!n)return;
+  const live=v26LiveCycle();_viewCycleId=n.id===(live&&live.id)?null:n.id;renderAll();
+  const card=$('cycleCardTitle');if(card&&d)card.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+function backToCurrentCycle(){_viewCycleId=null;renderAll()}
+// what happened in a cycle: cleared on time, cleared late (after the cycle ended), outstanding
+function v26Recap(c){
+  const end=v26CycleEnd(c),byId=new Map(state.transactions.map(t=>[t.id,t]));
+  const out={cleared:[],late:[],open:[],paidAmt:0,openAmt:0};
+  state.assignments.filter(a=>a.cycleId===c.id).forEach(a=>{
+    const b=state.bills.find(x=>x.id===a.billId)||{name:'Deleted bill',due:''};
+    const t=a.matchedTxnId?byId.get(a.matchedTxnId):null;
+    const row={a,b,t,due:v25DueDate(c,b),amt:Number(a.amount||0)};
+    if(a.paid){(t&&t.date>end?out.late:out.cleared).push(row);out.paidAmt+=t?Math.abs(Number(t.amount)):row.amt}
+    else{out.open.push(row);out.openAmt+=row.amt}
+  });
+  const byDue=(x,y)=>x.due.localeCompare(y.due);out.cleared.sort(byDue);out.late.sort(byDue);out.open.sort(byDue);
+  return out;
+}
+function v26RecapRows(list,kind){
+  return list.map(r=>{
+    const when=r.t?`${shortDate(r.t.date)} • ${esc(r.t.account)}`:(r.a.paid?'marked paid by hand':`was due ${shortDate(r.due)}`);
+    const amt=r.t?money(Math.abs(Number(r.t.amount))):money(r.amt);
+    return `<tr><td><a href="#" onclick="openBillTxn('${r.a.id}');return false" style="color:inherit;text-decoration:underline dotted">${esc(r.b.name)}</a><div class="muted" style="font-size:11px">${when}</div></td><td class="money ${kind==='open'?'bad':''}">${amt}</td><td class="right">${kind==='open'?`<button class="btn small" onclick="openBillTxn('${r.a.id}')">Find payment</button> <button class="btn small" onclick="togglePaid('${r.a.id}')">Mark paid</button>`:kind==='late'?'<span class="pill mid">Late</span>':'<span class="pill paid">Cleared</span>'}</td></tr>`;
+  }).join('');
+}
+const _v26RenderDashboard=renderDashboard;
+renderDashboard=function(){
+  _v26RenderDashboard();
+  const c=currentCycle();if(!c)return;
+  const live=v26LiveCycle(),s=v26Sorted(),i=s.findIndex(x=>x.id===c.id);
+  const past=v26IsPast(c),future=live&&c.date>live.date,viewing=!!live&&c.id!==live.id;
+  if($('cycleCardTitle'))$('cycleCardTitle').textContent=viewing?(past?'Past pay cycle':'Upcoming pay cycle'):'This pay cycle';
+  if($('cycleNav'))$('cycleNav').innerHTML=`<button class="btn small" ${i<=0?'disabled':''} onclick="shiftCycle(-1)" title="Previous pay cycle">◀</button><span style="font-size:12px;white-space:nowrap">${v26CycleLabel(c)}</span><button class="btn small" ${i>=s.length-1?'disabled':''} onclick="shiftCycle(1)" title="Next pay cycle">▶</button>${viewing?'<button class="btn small primary" onclick="backToCurrentCycle()">Current</button>':''}`;
+  // the safe-to-spend math is about today, so it only makes sense for the live cycle
+  if($('safeSpendBanner'))$('safeSpendBanner').style.display=viewing?'none':'';
+  const kd=$('kDiff');if(kd&&viewing){kd.textContent='—';kd.className='kpi-value';const f=kd.parentElement.querySelector('.kpi-foot');if(f)f.textContent='Only for the current cycle'}
+  else if(kd){const f=kd.parentElement.querySelector('.kpi-foot');if(f)f.textContent='Cash on hand minus everything still due • tap for detail'}
+  const kc=$('kCash');if(kc){const f=kc.parentElement.querySelector('.kpi-foot');if(f)f.textContent=viewing?"Today's balance, not as of that cycle":'Across included cash accounts • tap for detail'}
+  // recap for past cycles
+  const rec=$('cycleRecap');
+  if(rec){
+    if(past){
+      const r=v26Recap(c),n=r.cleared.length+r.late.length+r.open.length;
+      rec.innerHTML=n?`<h3 style="margin:14px 0 4px">What happened this cycle</h3>
+        <div class="sub">${r.cleared.length+r.late.length} of ${n} cleared (${money(r.paidAmt)})${r.late.length?`, ${r.late.length} after the cycle ended`:''} • ${r.open.length?`<span class="bad">${r.open.length} outstanding (${money(r.openAmt)})</span>`:'<span class="good">nothing outstanding</span>'}</div>
+        ${r.open.length?`<div class="kpi-label" style="margin-top:10px">Outstanding</div><table><tbody>${v26RecapRows(r.open,'open')}</tbody></table>`:''}
+        ${r.late.length?`<div class="kpi-label" style="margin-top:10px">Cleared after the cycle ended</div><table><tbody>${v26RecapRows(r.late,'late')}</tbody></table>`:''}
+        ${r.cleared.length?`<details style="margin-top:10px"><summary class="kpi-label" style="cursor:pointer">Cleared (${r.cleared.length})</summary><table><tbody>${v26RecapRows(r.cleared,'cleared')}</tbody></table></details>`:''}`:'';
+    }else rec.innerHTML='';
+  }
+  // banners: viewing an old cycle, or the last cycle left something open
+  const bn=$('pastCycleBanner');
+  if(bn){
+    let h='';
+    if(viewing){
+      h=`<div class="alertrow"><div><strong>${past?'Looking back at':'Looking ahead to'} the ${v26CycleLabel(c)} pay cycle</strong><div class="muted" style="font-size:12px">${past?'This cycle has ended. Bills and payments below are for that cycle; cash balances are today\'s.':'This cycle hasn\'t started yet.'}</div></div><button class="btn small primary" onclick="backToCurrentCycle()">Back to current</button></div>`;
+    }else if(i>0){
+      const prev=s[i-1],r=v26Recap(prev);
+      if(r.open.length)h=`<div class="alertrow warn"><div><strong>Last cycle (${v26CycleLabel(prev)}): ${r.open.length} bill${r.open.length===1?'':'s'} still outstanding — ${money(r.openAmt)}</strong><div class="muted" style="font-size:12px">${r.open.slice(0,4).map(x=>esc(x.b.name)).join(' • ')}${r.open.length>4?' • …':''}</div></div><button class="btn small" onclick="shiftCycle(-1)">Review last cycle</button></div>`;
+    }
+    bn.innerHTML=h;bn.style.display=h?'':'none';
+  }
+};
+
+/* ---------- 3. subscriptions ---------- */
+var _v26RawSubs=[];
+// marked Cancel and no charge since: out of the list and totals, parked under Canceled & hidden
+function subQuietCanceled(s){
+  const o=subOvPeek(s.key);
+  return o.decision==='cancel'&&!s.rows.some(t=>t.date>(o.decidedOn||''));
+}
+const _v26DetectSubs=detectSubs;
+detectSubs=function(all){
+  const r=_v26DetectSubs(all);
+  return all?r:r.filter(s=>!subQuietCanceled(s));
+};
+function v26HiddenSubs(){
+  try{detectSubs()}catch(e){}
+  return (_v26RawSubs||[]).filter(s=>s.ignored||subQuietCanceled(s)).sort((a,b)=>a.vendor.localeCompare(b.vendor));
+}
+function restoreSub(key){
+  const o=subOv(key);
+  if(o.ignored)o.ignored=false;
+  if(o.decision==='cancel'){o.decision='';o.decidedOn=''}
+  save();renderAll();
+}
+const _v26SetSubDecision=setSubDecision;
+setSubDecision=function(key,d){
+  const was=subOvPeek(key).decision;
+  _v26SetSubDecision(key,d);
+  if(d==='cancel'&&was!=='cancel')v26Toast('Moved to Canceled & hidden. It comes back here if you get charged again.');
+};
+function v26Toast(msg){
+  let el=$('v26Toast');
+  if(!el){el=document.createElement('div');el.id='v26Toast';el.style.cssText='position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:var(--card,#222);border:1px solid var(--line,#444);padding:10px 16px;border-radius:10px;z-index:9999;font-size:13px;box-shadow:0 6px 24px rgba(0,0,0,.35);max-width:90vw';document.body.appendChild(el)}
+  el.textContent=msg;el.style.display='';clearTimeout(el._t);el._t=setTimeout(()=>{el.style.display='none'},3500);
+}
+const _v26ToggleIgnoreSub=toggleIgnoreSub;
+toggleIgnoreSub=function(key){
+  const was=!!subOvPeek(key).ignored;_v26ToggleIgnoreSub(key);
+  if(!was)v26Toast('Hidden. Restore it any time from Canceled & hidden.');
+};
+showIgnored=function(){const el=$('subsHiddenCard');if(el){el.open=true;el.scrollIntoView({behavior:'smooth'})}};
+const _v26RenderSubs=renderSubs;
+renderSubs=function(){
+  _v26RenderSubs();
+  const hid=v26HiddenSubs();
+  if($('subsHiddenBtn'))$('subsHiddenBtn').textContent=`Canceled & hidden (${hid.length})`;
+  if($('subsHiddenCount'))$('subsHiddenCount').textContent=String(hid.length);
+  if($('subsHiddenBody'))$('subsHiddenBody').innerHTML=hid.length?`<table><tbody>${hid.map(s=>{
+    const o=subOvPeek(s.key),canc=subQuietCanceled(s);
+    return `<tr><td><strong>${esc(s.vendor)}</strong><div class="muted" style="font-size:11px">${esc(s.account)} • last charged ${fmtDate(s.last).replace(/, \d{4}/,'')}</div></td><td class="money">${money(s.monthly)}<div class="muted" style="font-size:10px">/mo</div></td><td>${canc?`<span class="pill high">Canceled</span><div class="muted" style="font-size:10px">${fmtDate(o.decidedOn).replace(/, \d{4}/,'')} • watching for charges</div>`:'<span class="pill">Hidden</span>'}</td><td class="right"><button class="btn small" onclick="restoreSub('${s.key}')">Restore</button></td></tr>`}).join('')}</tbody></table>`:'<div class="muted">Nothing canceled or hidden.</div>';
+};
+
+/* ---------- migration ---------- */
+function migrateV26(){
+  if(state._matchedV26)return false;
+  state._matchedV26=true;
+  try{runMatching()}catch(e){console.warn('v26 rematch',e)}
+  return true;
+}
+const _v26BootWithState=bootWithState;
+bootWithState=function(st){_v26BootWithState(st);try{if(migrateV26()){save();renderAll()}}catch(e){console.warn('v26 migrate',e)}};
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
 document.getElementById('settingsVer').textContent='App version '+APP_VERSION;
