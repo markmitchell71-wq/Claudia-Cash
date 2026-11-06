@@ -1,10 +1,17 @@
-# Claudia Cash — v29, next up 30
+# Claudia Cash — v30, next up 31
 
 A personal safe-to-spend budget that answers one question: **what can I safely spend until next payday?** It runs as a single-file web app (PWA) on GitHub Pages, installs to the iPhone home screen, and is fed by CSV exports from Monarch.
 
 Your data is cached on the device (IndexedDB) and, when you sign in with Google, synced to your Supabase project so the phone and the Mac see the same budget.
 
 ---
+
+## What's new in v30
+
+### Fix: editing a card's balance by hand
+- Before, a balance typed into **Edit** on a credit card was saved but never shown, because the last imported balance always won.
+- Now the edit is saved as **today's balance** for that card, so Accounts, Credit Cards, Payoff Planner and the trend charts all use it. The next balance import with a newer date replaces it.
+- **Edit** now starts from the balance you see on screen instead of an old saved number.
 
 ## What's new in v29
 
@@ -185,9 +192,9 @@ Monarch records most PayPal purchases twice: once on the **PayPal** account ("Pa
 
 ## Publishing an update
 
-1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V29`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
+1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V30`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
 2. Commit and push.
-3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v29`), so the new build replaces the old one cleanly.
+3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v30`), so the new build replaces the old one cleanly.
 
 On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen**.
 
@@ -205,6 +212,7 @@ On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen
 
 | Version | Date | Highlights |
 |---|---|---|
+| v30 | Nov 6, 2026 | Hand-entered card balances now show everywhere |
 | v29 | Nov 6, 2026 | Unpaid bills from last cycle carried into Safe to spend; late payments match up to 3 weeks |
 | v28 | Nov 6, 2026 | Subscriptions tabs; clickable charges; cards vs cash; 14-day renewals; rename linking; move billing; overlap check |
 | v27 | Nov 6, 2026 | Last 6 charges on every subscription |

@@ -568,7 +568,7 @@ tr.clickrow{cursor:pointer}tr.clickrow:hover td{background:rgba(127,127,127,.08)
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v29'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v30'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -4768,6 +4768,39 @@ v26RecapRows=function(list,kind){
 function migrateV29(){if(state._matchedV29)return false;state._matchedV29=true;try{runMatching()}catch(e){console.warn('v29 rematch',e)}return true}
 const _v29BootWithState=bootWithState;
 bootWithState=function(st){_v29BootWithState(st);try{if(migrateV29()){save();renderAll()}}catch(e){console.warn('v29 migrate',e)}};
+
+
+/* ================= v30: a card balance typed in by hand wins until a newer import ================= */
+function v30HistKey(name){
+  const H=state.balHist||{};if(H[name])return name;
+  const n=norm(name);
+  return Object.keys(H).find(k=>norm(k)===n)||Object.keys(H).find(k=>norm(k).includes(n)||n.includes(norm(k)))||'';
+}
+let _v30ShownBal=null;
+const _v30EditCard=editCard;
+editCard=function(id){
+  _v30EditCard(id);
+  let r=null;try{r=cardRows().find(x=>x.card&&x.card.id===id)}catch(e){}
+  _v30ShownBal=r?Math.round(r.bal*100)/100:null;
+  if(r&&$('cardBalance'))$('cardBalance').value=r.bal.toFixed(2);   // start from the balance you see, not an old saved number
+};
+const _v30OpenCardModal=openCardModal;
+openCardModal=function(){_v30OpenCardModal();_v30ShownBal=null};
+const _v30SaveCard=saveCard;
+saveCard=function(){
+  const editing=$('cardEditId').value,val=Math.round(Number($('cardBalance')?$('cardBalance').value:0)*100)/100,shown=_v30ShownBal;
+  _v30SaveCard();
+  const c=editing?(state.cards||[]).find(x=>x.id===editing):null;
+  if(!c||shown===null||Math.abs(val-shown)<0.005)return;
+  // record it as today's balance so every page (Accounts, Credit Cards, Payoff Planner, trends) uses it
+  const key=v30HistKey(c.match||c.name)||(c.match||c.name);
+  state.balHist=state.balHist||{};
+  const h=(state.balHist[key]=state.balHist[key]||[]);
+  const td=today(),i=h.findIndex(x=>x[0]===td),entry=[td,-Math.abs(val)];
+  if(i>=0)h[i]=entry;else{h.push(entry);h.sort((a,b)=>a[0].localeCompare(b[0]))}
+  c.balance=val;c.balanceSetOn=td;
+  save();renderAll();v26Toast(`${c.name}: balance set to ${money(val)} for today. A newer balance import will replace it.`);
+};
 
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
