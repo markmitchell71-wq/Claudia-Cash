@@ -568,7 +568,7 @@ tr.clickrow{cursor:pointer}tr.clickrow:hover td{background:rgba(127,127,127,.08)
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v28'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v29'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -4674,6 +4674,100 @@ function migrateV28(){
 }
 const _v28BootWithState=bootWithState;
 bootWithState=function(st){_v28BootWithState(st);try{if(migrateV28())save()}catch(e){console.warn('v28 migrate',e)}};
+
+
+/* ================= v29: bills the last cycle left unpaid still count against Safe to spend ================= */
+const V29_LATE_DAYS=21;
+// unpaid bills from the previous two pay cycles (skipping ones you said aren't owed)
+function v29Carried(c){
+  const s=v26Sorted(),i=s.findIndex(x=>x.id===c.id);if(i<=0)return [];
+  const prevIds=new Set(s.slice(Math.max(0,i-2),i).map(x=>x.id));
+  return state.assignments.filter(a=>prevIds.has(a.cycleId)&&!a.paid&&!a.waived&&Number(a.amount||0)>0).map(a=>{
+    const b=state.bills.find(x=>x.id===a.billId)||{name:'Deleted bill',due:''},pc=state.cycles.find(x=>x.id===a.cycleId);
+    const due=v25DueDate(pc,b);
+    return {a,b,cycle:pc,due,amt:Number(a.amount||0),late:daysBetween(due,today())};
+  }).sort((x,y)=>x.due.localeCompare(y.due));
+}
+const _v29CycleStats=cycleStats;
+cycleStats=function(c){
+  const s=_v29CycleStats(c);
+  const live=v26LiveCycle(),on=state.settings.carryOver!==false;
+  s.carried=on&&live&&c.id===live.id?v29Carried(c):[];
+  s.carriedAmt=s.carried.reduce((a,x)=>a+x.amt,0);s.carryOn=on;
+  if(s.carriedAmt){s.left+=s.carriedAmt;s.diff=s.cash-s.left}
+  return s;
+};
+function waiveAssignment(id){const a=state.assignments.find(x=>x.id===id);if(!a)return;a.waived=!a.waived;save();renderAll();v26Toast(a.waived?'Marked not owed — no longer held back.':'Counted again.')}
+function toggleCarryOver(v){state.settings.carryOver=!!v;save();renderAll();openKpiDetail('left')}
+function v29Rows(list){
+  return list.map(x=>`<tr><td><a href="#" onclick="closeModal('kpiModal');openBillTxn('${x.a.id}');return false" style="color:inherit;text-decoration:underline dotted">${esc(x.b.name)}</a><div class="muted" style="font-size:11px">due ${shortDate(x.due)}${x.late>0?` · <span class="bad">${x.late} day${x.late===1?'':'s'} late</span>`:x.late===0?' · due today':` · in ${-x.late}d`} · ${v26CycleLabel(x.cycle)} cycle</div></td>
+    <td class="money bad">${money(x.amt)}</td>
+    <td class="right" style="white-space:nowrap"><button class="btn small" onclick="closeModal('kpiModal');openBillTxn('${x.a.id}')">Find payment</button> <button class="btn small" onclick="togglePaid('${x.a.id}')">Paid</button> <button class="btn small" onclick="waiveAssignment('${x.a.id}')" title="Skipped, paid another way, or not owed">Not owed</button></td></tr>`).join('');
+}
+// late payments: a payment up to 3 weeks after the due date still clears a past cycle's bill
+const _v29Fit=v25Fit;
+v25Fit=function(a,b,c,t){
+  const f=_v29Fit(a,b,c,t);if(f||/every/i.test(b.due||''))return f;
+  if(!v26IsPast(c)||Number(t.amount)>=0||t.date>today())return null;
+  const due=v25DueDate(c,b),late=v25Days(due,t.date),win=Number(state.settings.dateWindow||7);
+  if(late<=win||late>V29_LATE_DAYS)return null;
+  const old=state.settings.dateWindow;state.settings.dateWindow=V29_LATE_DAYS;
+  let g=null;try{g=_v29Fit(a,b,c,t)}finally{state.settings.dateWindow=old}
+  if(!g)return null;
+  return {...g,kind:g.kind==='maybe'?'maybe':g.kind,score:g.score-1,late:true};
+};
+// dashboard banner: show the carried-over bills and say they're held back
+const _v29RenderDashboard=renderDashboard;
+renderDashboard=function(){
+  _v29RenderDashboard();
+  const c=currentCycle(),live=v26LiveCycle(),bn=$('pastCycleBanner');
+  if(!c||!live||c.id!==live.id||!bn)return;
+  const s=cycleStats(c),L=v29Carried(c);
+  if(!L.length){if(!/Looking/.test(bn.innerHTML)){bn.innerHTML='';bn.style.display='none'}return}
+  const amt=L.reduce((a,x)=>a+x.amt,0),late=L.filter(x=>x.late>0);
+  if(s.carriedAmt){
+    const foot=$('kLeft')&&$('kLeft').parentElement.querySelector('.kpi-foot');
+    if(foot)foot.textContent=`${money(s.billsLeft)} this cycle + ${money(s.carriedAmt)} from last${s.subsOn&&s.subsCash>0?` + ${money(s.subsCash)} subs`:''} • tap for detail`;
+    if($('safeSpendDetail'))$('safeSpendDetail').innerHTML=`${money(s.cash)} cash on hand − ${money(s.billsLeft)} bills still due − ${money(s.carriedAmt)} unpaid from last cycle${s.subsOn&&s.subsCash>0?` − ${money(s.subsCash)} subscriptions from cash`:''} = ${money(s.diff)} safe to spend`
+      +(s.subsCard>0?`<div class="muted" style="font-size:12px;margin-top:2px">Plus ${money(s.subsCard)} in subscriptions on credit cards (not taken from cash).</div>`:'');
+  }
+  bn.style.display='';
+  bn.innerHTML=`<div class="alertrow ${late.length?'bad':'warn'}" style="display:block"><div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:flex-start"><div><strong>${money(amt)} from last cycle hasn't cleared</strong><div class="muted" style="font-size:12px">${s.carryOn?'Still counted in Left to be paid, so Safe to spend holds it back.':'<span class="bad">Not counted in Safe to spend</span> — turn on in Left to be paid.'} Mark each one Paid when it goes through, or Not owed if it's been handled.</div></div><button class="btn small" onclick="shiftCycle(-1)">Review last cycle</button></div>
+    <table style="margin-top:8px"><tbody>${v29Rows(L)}</tbody></table></div>`;
+};
+// Left to be paid / Safe to spend detail
+const _v29OpenKpiDetail=openKpiDetail;
+openKpiDetail=function(kind){
+  _v29OpenKpiDetail(kind);
+  if(kind!=='left'&&kind!=='diff')return;
+  const c=currentCycle(),live=v26LiveCycle();if(!c||!live||c.id!==live.id)return;
+  const s=cycleStats(c),L=v29Carried(c);if(!L.length||!$('kpiModalBody'))return;
+  const tot=L.reduce((a,x)=>a+x.amt,0);
+  const html=kind==='left'
+    ?`<div class="card" style="padding:12px;margin-bottom:12px"><strong>Carried over from last cycle: ${money(tot)}</strong> <span class="muted" style="font-size:12px">${s.carryOn?'included below in the total':'not counted'}</span><table style="margin-top:6px"><tbody>${v29Rows(L)}</tbody></table>
+      <label style="display:block;margin-top:8px;font-size:13px"><input type="checkbox" ${s.carryOn?'checked':''} onchange="toggleCarryOver(this.checked)"> Count unpaid bills from last cycle in Left to be paid</label></div>`
+    :'';
+  if(kind==='diff'){
+    if(s.carryOn)$('kpiModalBody').innerHTML=$('kpiModalBody').innerHTML.replace('<tr><td><strong>= Safe to spend</strong>',`<tr><td>&minus; Unpaid from last cycle<div class="muted" style="font-size:11px">${L.map(x=>esc(x.b.name)).join(', ')}</div></td><td class="money">${money(-tot)}</td></tr><tr><td><strong>= Safe to spend</strong>`);
+    else $('kpiModalBody').insertAdjacentHTML('afterbegin',`<div class="note" style="margin-bottom:12px">${money(tot)} from last cycle is unpaid but not counted.</div>`);
+    return;
+  }
+  $('kpiModalBody').insertAdjacentHTML('afterbegin',html);
+};
+// past-cycle recap: "not owed" items aren't outstanding
+const _v29Recap=v26Recap;
+v26Recap=function(c){
+  const r=_v29Recap(c),w=r.open.filter(x=>x.a.waived);
+  if(w.length){r.open=r.open.filter(x=>!x.a.waived);r.openAmt-=w.reduce((a,x)=>a+x.amt,0);r.cleared=r.cleared.concat(w)}
+  return r;
+};
+const _v29RecapRows=v26RecapRows;
+v26RecapRows=function(list,kind){
+  return list.map(r=>r.a.waived?`<tr><td>${esc(r.b.name)}<div class="muted" style="font-size:11px">was due ${shortDate(r.due)}</div></td><td class="money">${money(r.amt)}</td><td class="right"><span class="pill">Not owed</span> <button class="btn small" onclick="waiveAssignment('${r.a.id}')">Undo</button></td></tr>`:_v29RecapRows([r],kind)).join('');
+};
+function migrateV29(){if(state._matchedV29)return false;state._matchedV29=true;try{runMatching()}catch(e){console.warn('v29 rematch',e)}return true}
+const _v29BootWithState=bootWithState;
+bootWithState=function(st){_v29BootWithState(st);try{if(migrateV29()){save();renderAll()}}catch(e){console.warn('v29 migrate',e)}};
 
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;

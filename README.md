@@ -1,10 +1,18 @@
-# Claudia Cash — v28, next up 29
+# Claudia Cash — v29, next up 30
 
 A personal safe-to-spend budget that answers one question: **what can I safely spend until next payday?** It runs as a single-file web app (PWA) on GitHub Pages, installs to the iPhone home screen, and is fed by CSV exports from Monarch.
 
 Your data is cached on the device (IndexedDB) and, when you sign in with Google, synced to your Supabase project so the phone and the Mac see the same budget.
 
 ---
+
+## What's new in v29
+
+### Last cycle's unpaid bills still count
+- Bills from the previous two pay cycles that haven't cleared are now **carried over** into Left to be paid, so Safe to spend holds that money back.
+- The Dashboard banner lists each one with its due date and how many days late it is, plus **Find payment**, **Paid** and **Not owed** (skipped, paid another way, or not owed).
+- **Left to be paid** and **Safe to spend** details show the carried-over line. Turn it off in Left to be paid if you ever need to.
+- Late payments up to **3 weeks after the due date** now match the old cycle's bill automatically, so it clears on the next import.
 
 ## What's new in v28
 
@@ -177,9 +185,9 @@ Monarch records most PayPal purchases twice: once on the **PayPal** account ("Pa
 
 ## Publishing an update
 
-1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V28`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
+1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V29`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
 2. Commit and push.
-3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v28`), so the new build replaces the old one cleanly.
+3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v29`), so the new build replaces the old one cleanly.
 
 On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen**.
 
@@ -197,6 +205,7 @@ On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen
 
 | Version | Date | Highlights |
 |---|---|---|
+| v29 | Nov 6, 2026 | Unpaid bills from last cycle carried into Safe to spend; late payments match up to 3 weeks |
 | v28 | Nov 6, 2026 | Subscriptions tabs; clickable charges; cards vs cash; 14-day renewals; rename linking; move billing; overlap check |
 | v27 | Nov 6, 2026 | Last 6 charges on every subscription |
 | v26 | Nov 6, 2026 | Past pay-cycle look-back; stricter card-payment matching; Canceled & hidden subscriptions |
