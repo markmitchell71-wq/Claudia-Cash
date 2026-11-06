@@ -153,6 +153,11 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 .attnfacts{display:flex;flex-direction:column;gap:2px;font-size:12px;color:var(--muted);margin-top:6px;line-height:1.45}
 .attnfacts b{color:var(--text);font-weight:700}
 .attnhist{font-size:11px;color:var(--muted);margin-top:4px}
+.l6{margin-top:4px;max-width:420px;font-size:11.5px}
+.l6row{display:grid;grid-template-columns:76px 1fr auto;gap:8px;padding:3px 0;border-top:1px dashed var(--line);align-items:baseline}
+.l6row:first-child{border-top:0}.l6row .l6sub{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.l6row .l6amt{font-weight:700;white-space:nowrap}.l6more{font-size:10.5px;color:var(--muted);margin-top:2px}
+.l6d{margin-top:4px;font-size:11px}.l6d>summary{cursor:pointer;color:var(--accent);font-weight:600;list-style:revert}
 @media(max-width:700px){.grid.kpis{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
 #appleCard details summary{padding:4px 0}
 #appleCard .kpi-value{font-size:22px}
@@ -531,7 +536,7 @@ tr.grouphead td{background:var(--panel2);font-weight:800;font-size:12px;text-tra
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v26'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v27'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -1762,7 +1767,7 @@ function renderSubs(){
     const ci=subCardInfo(s),o=subOvPeek(s.key);
     const chg=ci?`<div class="${ci.apr>=SUB_APR_HIGH?'bad':'muted'}" style="font-size:11px">on a card${ci.apr?` • ${ci.apr}% APR`:''}</div>`:'';
     return `<tr>
-      <td><strong>${esc(s.vendor)}</strong>${s.fuzzy?' <span class="pill unpaid">needs review</span>':''}${s.via?`<div class="muted" style="font-size:11px">billed via ${esc(s.via)}</div>`:''}${o.note?`<div class="muted" style="font-size:11px">📝 ${esc(o.note)}</div>`:''}</td>
+      <td><strong>${esc(s.vendor)}</strong>${s.fuzzy?' <span class="pill unpaid">needs review</span>':''}${s.via?`<div class="muted" style="font-size:11px">billed via ${esc(s.via)}</div>`:''}${o.note?`<div class="muted" style="font-size:11px">📝 ${esc(o.note)}</div>`:''}${last6Details(subLast6(s),s.rows.length)}</td>
       <td style="font-size:12px">${subType(s)}</td>
       <td>${esc(s.account)}${chg}</td>
       <td class="money ${s.priceUp?'bad':''}">${money(s.amount)}${s.priceUp?`<div class="muted" style="font-size:10px">was ${money(s.priorAmount)}</div>`:''}</td>
@@ -2925,6 +2930,21 @@ function hidePop(){const pop=$('ccPop');if(pop)pop.style.display='none';_popKind
   window.addEventListener('scroll',()=>{if(!_popKind)return;const el=document.querySelector(`[data-pop="${_popKind}"]`);if(!el)return hidePop();const r=el.getBoundingClientRect();if(r.bottom<0||r.top>window.innerHeight)hidePop();else showPop(el,_popPinned)},{passive:true});
 })();
 
+/* ---------- v27: last 6 charges on every subscription item ---------- */
+function l6Date(d){return d&&d.slice(0,4)===today().slice(0,4)?shortDate(d):(d?fmtDate(d):'—')}
+// items oldest→newest: [{date,amt,sub}]; newest shown first, ▲/▼ when the amount changed vs the charge before it
+function last6List(items,total){
+  const L=items.slice(-6).reverse();if(!L.length)return '';
+  return `<div class="l6">${L.map((x,i)=>{const pv=L[i+1],d=pv&&Math.abs(x.amt-pv.amt)>=0.5?(x.amt>pv.amt?'up':'down'):'';
+    return `<div class="l6row"><span>${l6Date(x.date)}</span><span class="l6sub">${esc(x.sub||'')}</span><span class="l6amt ${d==='up'?'bad':d==='down'?'good':''}">${d==='up'?'▲ ':d==='down'?'▼ ':''}${money(x.amt)}</span></div>`}).join('')}${total>6?`<div class="l6more">Showing 6 of ${total} charges</div>`:''}</div>`;
+}
+function subLast6(s){
+  const R=s.rows||[],multi=new Set(R.map(t=>t.account)).size>1;
+  return last6List(R.map(t=>({date:t.date,amt:Math.abs(Number(t.amount)),sub:multi?t.account:(t.merchant||t.account||'')})),R.length);
+}
+function apLast6(a){return last6List((a.charges||[]).map(c=>({date:c.date,amt:c.amt,sub:[c.plan,c.pay].filter(Boolean).join(' · ')})),(a.charges||[]).length)}
+function last6Details(html,n){return html?`<details class="l6d" onclick="event.stopPropagation()"><summary>Last ${Math.min(6,n)} charge${n===1?'':'s'}</summary>${html}</details>`:''}
+
 /* ---------- 4/5. last charge + richer Needs attention ---------- */
 function lastChargeCell(s){
   const t=s.rows.at(-1);
@@ -2942,7 +2962,7 @@ function subFacts(s){
     <span>Paid with ${esc(s.account)}${ci&&ci.apr?` (${ci.apr}% APR)`:''}${billTxt}</span>
     <span>${subType(s)} · ${s.rows.length} charge${s.rows.length===1?'':'s'} since ${shortDate(s.rows[0].date)} · ${money(total)} total</span>
   </div>
-  <div class="attnhist">Recent: ${s.rows.slice(-4).reverse().map(r=>`${shortDate(r.date)} ${money(Math.abs(Number(r.amount)))}`).join(' · ')}</div>`;
+  <div class="attnhist" style="margin-top:8px;font-weight:700">Last ${Math.min(6,s.rows.length)} charge${s.rows.length===1?'':'s'}</div>${subLast6(s)}`;
 }
 
 /* ---------- extra 1/2/3: Home banners (card update, stale import, price increases) ---------- */
@@ -3346,7 +3366,7 @@ function apStatus(a){
 function apRow(a,showDec){
   const du=a.renews?daysUntil(a.renews):null;
   return `<tr${a.stopped?' style="opacity:.62"':''}>
-    <td><strong>${esc(a.name)}</strong><div class="muted" style="font-size:11px">${esc(a.plan)}${a.plans.length>1?` · was ${esc(a.plans.filter(p=>p!==a.plan).join(', '))}`:''}</div></td>
+    <td><strong>${esc(a.name)}</strong><div class="muted" style="font-size:11px">${esc(a.plan)}${a.plans.length>1?` · was ${esc(a.plans.filter(p=>p!==a.plan).join(', '))}`:''}</div>${last6Details(apLast6(a),a.charges.length)}</td>
     <td class="money">${money(a.price)}<div class="muted" style="font-size:10px">${AP_CAD[a.cad]}${a.amt!==a.price?` · ${money(a.amt)} w/ tax`:''}</div></td>
     <td>${esc(a.pay)}</td>
     <td>${shortDate(a.lastDate)}</td>
@@ -4280,7 +4300,7 @@ renderSubs=function(){
   if($('subsHiddenCount'))$('subsHiddenCount').textContent=String(hid.length);
   if($('subsHiddenBody'))$('subsHiddenBody').innerHTML=hid.length?`<table><tbody>${hid.map(s=>{
     const o=subOvPeek(s.key),canc=subQuietCanceled(s);
-    return `<tr><td><strong>${esc(s.vendor)}</strong><div class="muted" style="font-size:11px">${esc(s.account)} • last charged ${fmtDate(s.last).replace(/, \d{4}/,'')}</div></td><td class="money">${money(s.monthly)}<div class="muted" style="font-size:10px">/mo</div></td><td>${canc?`<span class="pill high">Canceled</span><div class="muted" style="font-size:10px">${fmtDate(o.decidedOn).replace(/, \d{4}/,'')} • watching for charges</div>`:'<span class="pill">Hidden</span>'}</td><td class="right"><button class="btn small" onclick="restoreSub('${s.key}')">Restore</button></td></tr>`}).join('')}</tbody></table>`:'<div class="muted">Nothing canceled or hidden.</div>';
+    return `<tr><td><strong>${esc(s.vendor)}</strong><div class="muted" style="font-size:11px">${esc(s.account)} • last charged ${fmtDate(s.last).replace(/, \d{4}/,'')}</div>${last6Details(subLast6(s),s.rows.length)}</td><td class="money">${money(s.monthly)}<div class="muted" style="font-size:10px">/mo</div></td><td>${canc?`<span class="pill high">Canceled</span><div class="muted" style="font-size:10px">${fmtDate(o.decidedOn).replace(/, \d{4}/,'')} • watching for charges</div>`:'<span class="pill">Hidden</span>'}</td><td class="right"><button class="btn small" onclick="restoreSub('${s.key}')">Restore</button></td></tr>`}).join('')}</tbody></table>`:'<div class="muted">Nothing canceled or hidden.</div>';
 };
 
 /* ---------- migration ---------- */
