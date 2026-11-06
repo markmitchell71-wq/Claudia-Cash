@@ -1,10 +1,51 @@
-# Claudia Cash — v25, next up 26
+# Claudia Cash — v28, next up 29
 
 A personal safe-to-spend budget that answers one question: **what can I safely spend until next payday?** It runs as a single-file web app (PWA) on GitHub Pages, installs to the iPhone home screen, and is fed by CSV exports from Monarch.
 
 Your data is cached on the device (IndexedDB) and, when you sign in with Google, synced to your Supabase project so the phone and the Mac see the same budget.
 
 ---
+
+## What's new in v28
+
+### Subscriptions page, reorganized
+- **Three tabs across the top:** **Needs attention**, **Apple subscriptions** and **All subscriptions**. Each box shows a summary (renewals and price increases, Apple monthly total, overlaps and decisions). The app remembers the last tab you used.
+- **Needs attention** holds Renewing in the next 14 days, the attention queue, and the review of bundled charges.
+- **All subscriptions** holds Paying twice?, By type, the full table, and Canceled & hidden.
+
+### Charges you can open
+- Every attention item has a **Details & last 6 charges** drop-down.
+- Tap any charge (attention items, the table, the Apple tab, Canceled & hidden) to open the real transaction. Apple charges also show what the receipt paid for and which subscriptions they belong to.
+
+### Paid with: cards vs cash
+- Replaces *On high-APR cards*. Shows the monthly total on **Cards** and on **Cash**.
+- **Cards** lists each card with its APR and balance, the subscriptions on it, and the yearly interest at 20%+ APR.
+- **Cash** breaks down by Bank of America, Delta, Chase and PayPal. PayPal always counts as cash.
+
+### New tools
+- **Renewing in the next 14 days:** date, amount, account and pay cycle. Anything marked Cancel says *Cancel it before this*.
+- **Price changes** show in the tab box and renewals list. For Apple subscriptions, a price drop now shows the new, lower price.
+- **Renamed services:** Manage → *Same service as* merges an old name into a new one (e.g. *Apple TV + Peacock* → *Peacock TV*) so they keep one history. The app suggests likely renames.
+- **Move billing:** Manage → *Move billing to*, or **Move…** on high-APR items. The app watches the next charge. When it lands on the new account it shows ✓ **Done**; if it's still on the old card it warns you.
+- **Paying twice?:** groups services that do the same job (streaming, music, AI assistants, cloud storage, dating & social, money apps). **Looks fine** clears a group until something new joins it.
+
+## What's new in v27
+
+- **Last 6 charges** on every subscription (table, Apple tab, Canceled & hidden, Needs attention), newest first, with ▲/▼ when the amount changed.
+
+## What's new in v26
+
+### Look back at past pay cycles
+- **‹ ›** on the Dashboard's *This pay cycle* card steps through earlier cycles. Each one shows what **cleared**, what was **late**, and what was still **open**. **Back to current** returns.
+- After payday, a banner flags anything the last cycle left outstanding.
+
+### Better card-payment matching
+- A card bill only matches a real payment (payment, autopay, ePay, "thank you"). Purchases, Apple.com charges, ATM withdrawals, interest, fees, savings transfers and Apple Cash are no longer taken as payments.
+- Bills you matched by hand that don't look like payments are flagged when you open them.
+
+### Removing subscriptions
+- **Cancel** moves a subscription to **Canceled & hidden** once no new charge has come in. If you're charged again, it comes back to Needs attention.
+- **Hide** is on every attention item. **Canceled & hidden** lists both, with **Restore**.
 
 ## What's new in v25
 
@@ -104,7 +145,7 @@ Monarch records most PayPal purchases twice: once on the **PayPal** account ("Pa
 | **Dashboard** | Cash on hand, this cycle's bills, paid / left, and **Safe to spend** until next payday. Bills for the cycle, cash accounts, subscriptions this pay period, and alert banners. |
 | **Accounts** | Checking, savings and other accounts. Only accounts marked *Include in cash on hand* count toward Safe to spend. |
 | **Funding & Transfers** | Which account pays each bill, what each account needs this cycle, and the transfers to make, and by when. |
-| **Subscriptions** | Recurring services detected from your history, decisions (Keep / Review / Cancel), Needs attention queue, types and overlap, and Apple subscriptions itemized from receipts. |
+| **Subscriptions** | Tabs for Needs attention (renewals, queue), Apple subscriptions (itemized from receipts) and All subscriptions (overlaps, types, table, hidden). Cards vs cash, move billing, link renamed services. |
 | **Budgeting** | Monthly targets for discretionary categories, with suggestions from your last 6 months. |
 | **Credit Cards** | Balances, limits, utilization, interest and payments per card. |
 | **Payoff Planner** | Priority ranking, balance by month, payoff plan builder, strategy comparison and plan log. |
@@ -122,7 +163,8 @@ Monarch records most PayPal purchases twice: once on the **PayPal** account ("Pa
 3. Check the Home banners: transfers, price increases, renewals.
 
 **When new Apple receipts arrive (or monthly):**
-1. **Subscriptions → Apple subscriptions → Add receipt** and paste each receipt, or import a receipts file.
+1. **Subscriptions → Apple subscriptions → Add receipt** and paste each receipt, or import a receipts file (ask Claude to build one from Gmail).
+2. Check Needs attention for rename suggestions and price changes.
 
 **Once a month (first few days):**
 1. Tap **Review** on the *update your card payments* banner.
@@ -135,9 +177,9 @@ Monarch records most PayPal purchases twice: once on the **PayPal** account ("Pa
 
 ## Publishing an update
 
-1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V25`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
+1. Copy `index.html` and `service-worker.js` from the version folder (e.g. `V28`) into the GitHub Pages repo, alongside the existing `manifest.webmanifest` and icons.
 2. Commit and push.
-3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v25`), so the new build replaces the old one cleanly.
+3. Open the app. When the update banner appears, tap **Reload now**. The service worker cache name changes each version (`cash-tracker-v28`), so the new build replaces the old one cleanly.
 
 On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen**.
 
@@ -155,6 +197,9 @@ On a new iPhone: open the Pages URL in Safari → Share → **Add to Home Screen
 
 | Version | Date | Highlights |
 |---|---|---|
+| v28 | Nov 6, 2026 | Subscriptions tabs; clickable charges; cards vs cash; 14-day renewals; rename linking; move billing; overlap check |
+| v27 | Nov 6, 2026 | Last 6 charges on every subscription |
+| v26 | Nov 6, 2026 | Past pay-cycle look-back; stricter card-payment matching; Canceled & hidden subscriptions |
 | v25 | Oct 26, 2026 | Cards follow reissued numbers; all accounts on Accounts; stricter bill matching with possible matches; bill → transaction view and Last paid; cash subscriptions in Left to be paid |
 | v24 | Oct 22, 2026 | Apple subscriptions from receipt emails; bundled Apple charges split into real apps |
 | v23 | Oct 22, 2026 | PayPal double entries skipped; clean PayPal merchant names |
