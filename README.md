@@ -1,4 +1,4 @@
-# Claudia Cash — v25
+# Claudia Cash — v25, next up 26
 
 A personal safe-to-spend budget that answers one question: **what can I safely spend until next payday?** It runs as a single-file web app (PWA) on GitHub Pages, installs to the iPhone home screen, and is fed by CSV exports from Monarch.
 
