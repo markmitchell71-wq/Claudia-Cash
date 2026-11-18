@@ -568,7 +568,7 @@ tr.clickrow{cursor:pointer}tr.clickrow:hover td{background:rgba(127,127,127,.08)
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v30'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v31'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -4802,6 +4802,42 @@ saveCard=function(){
   save();renderAll();v26Toast(`${c.name}: balance set to ${money(val)} for today. A newer balance import will replace it.`);
 };
 
+
+/* ============================================================
+   v31: PayPal pairs — when Monarch labels the bank/card side of a
+   PayPal purchase generically (merchant "PayPal" or category
+   "Transfer"), the counted copy borrows the PayPal copy's merchant
+   and category so spending, budgets and subscriptions see the real
+   thing (Spotify, Oura, Microsoft, eBay...). Original values are
+   kept on t.v31pp. Runs on every render, so new imports are covered.
+   ============================================================ */
+function v31EnrichPayPalPairs(){
+  try{
+    if(state.settings&&state.settings.paypalMirrors===false)return 0;
+    paypalMirrorIds();
+    const pairs=_ppMirrorCache.pairs;if(!pairs||!pairs.size)return 0;
+    const byId=new Map((state.transactions||[]).map(t=>[t.id,t]));
+    let n=0;
+    pairs.forEach((o,ppId)=>{
+      const p=byId.get(ppId);
+      if(!p||!o||o.v31pp||isPayPalAcct(o.account))return;
+      const genMerchant=/^paypal$/i.test((o.merchant||'').trim());
+      const genCat=/^transfer$/i.test((o.category||'').trim());
+      if(!genMerchant&&!genCat)return;
+      const pm=(p.merchant||'').trim(),pc=(p.category||'').trim();
+      const useM=genMerchant&&pm&&!/^paypal$/i.test(pm);
+      const useC=genCat&&pc&&!/payment|transfer/i.test(pc);
+      if(!useM&&!useC)return;
+      o.v31pp={merchant:o.merchant,category:o.category};
+      if(useM)o.merchant=pm;
+      if(useC)o.category=pc;
+      n++;
+    });
+    return n;
+  }catch(e){console.warn('v31 paypal enrich',e);return 0}
+}
+const _v31RenderAll=renderAll;
+renderAll=function(){v31EnrichPayPalPairs();_v31RenderAll()};
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
 document.getElementById('settingsVer').textContent='App version '+APP_VERSION;

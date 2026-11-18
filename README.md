@@ -1,10 +1,18 @@
-# Claudia Cash — v30, next up 31
+# Claudia Cash — v31, next up 32
 
 A personal safe-to-spend budget that answers one question: **what can I safely spend until next payday?** It runs as a single-file web app (PWA) on GitHub Pages, installs to the iPhone home screen, and is fed by CSV exports from Monarch.
 
 Your data is cached on the device (IndexedDB) and, when you sign in with Google, synced to your Supabase project so the phone and the Mac see the same budget.
 
 ---
+
+## What's new in v31
+
+### PayPal purchases keep their real name and category
+- Monarch sometimes labels the bank side of a PayPal purchase as merchant **PayPal**, category **Transfer**. The app already counts only the bank copy and skips the PayPal-account copy, so those purchases were showing up as generic transfers.
+- Now, when a PayPal pair is matched and the bank side is generic, the counted copy takes the **merchant and category from the PayPal copy** (e.g. Spotify / Music Subscription, Oura Ring, Microsoft, eBay).
+- Spending, budgets and the subscription tracker now see these correctly. Payment- or transfer-type PayPal categories are never copied over.
+- Works automatically on every import; turning off **Skip the PayPal copy** in Settings turns this off too.
 
 ## What's new in v30
 
