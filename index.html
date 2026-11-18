@@ -568,7 +568,7 @@ tr.clickrow{cursor:pointer}tr.clickrow:hover td{background:rgba(127,127,127,.08)
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v31'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v32'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -4838,6 +4838,146 @@ function v31EnrichPayPalPairs(){
 }
 const _v31RenderAll=renderAll;
 renderAll=function(){v31EnrichPayPalPairs();_v31RenderAll()};
+
+/* ================= v32: projected leftover for future pay cycles ================= */
+// Regular paycheck = the live cycle's paycheck (or the latest one entered before it)
+function v31RegularPay(live){
+  const s=v26Sorted(),i=s.findIndex(x=>x.id===live.id);
+  for(let k=i;k>=0;k--){const p=Number(s[k].paycheck||0);if(p>0)return p}
+  const any=s.find(x=>Number(x.paycheck||0)>0);return any?Number(any.paycheck):0;
+}
+// Walk forward from today's Safe to spend: each later cycle adds its paycheck and takes out what's still due in it
+function v31Projection(c){
+  const live=v26LiveCycle();if(!live||!c||c.date<=live.date)return null;
+  const s=v26Sorted(),iL=s.findIndex(x=>x.id===live.id),iF=s.findIndex(x=>x.id===c.id);
+  if(iL<0||iF<=iL)return null;
+  const reg=v31RegularPay(live),ls=cycleStats(live);
+  let bal=ls.diff;const steps=[];
+  for(let k=iL+1;k<=iF;k++){
+    const cy=s[k],st=cycleStats(cy),own=Number(cy.paycheck||0),pay=own>0?own:reg,start=bal;
+    const bills=(st.billsLeft!=null?st.billsLeft:st.left),subs=st.subsOn?Number(st.subsCash||0):0;
+    bal=start+pay-st.left;
+    steps.push({c:cy,start,pay,own:own>0,bills,subs,out:st.left,end:bal});
+  }
+  return {today:ls.diff,live,reg,steps,last:steps[steps.length-1]};
+}
+function v31SetKpi(id,label,value,cls,foot){
+  const el=$(id);if(!el)return;const card=el.parentElement;
+  const l=card.querySelector('.kpi-label');if(l)l.textContent=label;
+  if(value!=null)el.textContent=value;if(cls!=null)el.className='kpi-value '+cls;
+  const f=card.querySelector('.kpi-foot');if(f&&foot!=null)f.textContent=foot;
+}
+const _v31RenderDashboard=renderDashboard;
+renderDashboard=function(){
+  _v31RenderDashboard();
+  const c=currentCycle(),P=v31Projection(c);
+  if(!P){v31SetKpi('kCash','Cash on hand');v31SetKpi('kDiff','Safe to spend');return}
+  const L=P.last,between=P.steps.length-1;
+  v31SetKpi('kCash','Projected start',money(L.start),L.start<0?'bad':'',
+    between?`Today's safe to spend, carried through ${between} earlier cycle${between===1?'':'s'} • tap for detail`:"Today's safe to spend, carried forward • tap for detail");
+  v31SetKpi('kDiff','Projected leftover',money(L.end),L.end<0?'bad':'good',
+    `Start + ${money(L.pay)} paycheck − ${money(L.out)} due • tap for detail`);
+  const bn=$('pastCycleBanner');
+  if(bn&&/Looking ahead/.test(bn.innerHTML)){
+    bn.innerHTML=bn.innerHTML.replace("This cycle hasn't started yet.",
+      `This cycle hasn't started yet. Projected leftover after all bills: <strong class="${L.end<0?'bad':'good'}">${money(L.end)}</strong>, assuming ${L.own?'its':'your regular'} ${money(L.pay)} paycheck.`);
+  }
+};
+function v31ProjectionModal(P){
+  const rows=P.steps.map(x=>`<tr><td><strong>${v26CycleLabel(x.c)}</strong><div class="muted" style="font-size:11px">${x.own?'paycheck entered on this cycle':'regular paycheck assumed'}${x.subs?` · incl. ${money(x.subs)} cash subscriptions`:''}</div></td>
+    <td class="money">${money(x.start)}</td><td class="money good">+${money(x.pay)}</td><td class="money bad">−${money(x.out)}</td><td class="money"><strong class="${x.end<0?'bad':''}">${money(x.end)}</strong></td></tr>`).join('');
+  return `<table><thead><tr><th>Pay cycle</th><th class="money">Start</th><th class="money">Paycheck</th><th class="money">Bills due</th><th class="money">Leftover</th></tr></thead><tbody>
+    <tr><td>Today (${v26CycleLabel(P.live)})<div class="muted" style="font-size:11px">current Safe to spend</div></td><td></td><td></td><td></td><td class="money"><strong>${money(P.today)}</strong></td></tr>${rows}</tbody></table>
+    <div class="note" style="margin-top:12px">A projection, not a balance. Starts from today's Safe to spend, then each cycle adds its paycheck (your regular ${money(P.reg)} unless a different amount is entered on that cycle) and takes out the bills still due in it${P.steps.some(x=>x.subs)?' plus subscriptions expected from cash':''}. Spending outside your Bills isn't included, so the real number will usually be lower.</div>`;
+}
+const _v31OpenKpiDetail=openKpiDetail;
+openKpiDetail=function(kind){
+  const P=(kind==='cash'||kind==='diff')?v31Projection(currentCycle()):null;
+  if(!P)return _v31OpenKpiDetail(kind);
+  $('kpiModalTitle').textContent=kind==='cash'?'Projected start':'Projected leftover';
+  $('kpiModalBody').innerHTML=v31ProjectionModal(P);
+  openModal('kpiModal');
+};
+
+/* ================= v32: one-click "Load latest from Monarch" ================= */
+// Remembers your Transaction Data folder (Chrome/Edge on a computer) and imports the newest
+// Transactions_*.csv and Balances_*.csv through the normal importers.
+const V31_DB='cc-folder',V31_STORE='h';
+function v31Db(){return new Promise((res,rej)=>{const r=indexedDB.open(V31_DB,1);r.onupgradeneeded=()=>r.result.createObjectStore(V31_STORE);r.onsuccess=()=>res(r.result);r.onerror=()=>rej(r.error)})}
+async function v31GetHandle(){try{const db=await v31Db();return await new Promise(res=>{const q=db.transaction(V31_STORE).objectStore(V31_STORE).get('dir');q.onsuccess=()=>res(q.result||null);q.onerror=()=>res(null)})}catch(e){return null}}
+async function v31SaveHandle(h){const db=await v31Db();return new Promise(res=>{const t=db.transaction(V31_STORE,'readwrite');t.objectStore(V31_STORE).put(h,'dir');t.oncomplete=()=>res()})}
+function v31Supported(){return typeof window.showDirectoryPicker==='function'}
+async function v31PickFolder(){
+  if(!v31Supported())return v26Toast('Folder loading needs Chrome or Edge on a computer.'),null;
+  try{const h=await window.showDirectoryPicker({id:'monarch-csv',mode:'read'});await v31SaveHandle(h);v31UpdateBtn(h);return h}
+  catch(e){if(e&&e.name!=='AbortError')console.warn(e);return null}
+}
+async function v31Newest(dir,prefix){
+  let best=null;
+  for await(const [name,h] of dir.entries()){
+    if(h.kind!=='file'||!name.toLowerCase().startsWith(prefix.toLowerCase())||!/\.csv$/i.test(name))continue;
+    const f=await h.getFile();if(!best||f.lastModified>best.lastModified)best=f;
+  }
+  return best;
+}
+// run one of the app's importers on a File and wait for it to finish; alerts become toasts so automation never stalls
+function v31RunImport(fn,file,doneCheck){
+  return new Promise(resolve=>{
+    const msgs=[],oldAlert=window.alert;window.alert=m=>msgs.push(String(m));
+    const t0=Date.now();
+    const fin=()=>{window.alert=oldAlert;resolve(msgs.join(' '))};
+    try{fn({target:{files:[file],value:''}})}catch(e){msgs.push('Error: '+e.message);return fin()}
+    const iv=setInterval(()=>{
+      if(doneCheck()||msgs.length||Date.now()-t0>60000){clearInterval(iv);setTimeout(fin,300)}
+    },200);
+  });
+}
+let _v31Busy=false;
+async function v31LoadLatest(opts){
+  opts=opts||{};if(_v31Busy)return;
+  if(!v31Supported())return v26Toast('Folder loading needs Chrome or Edge on a computer. Use Import Transactions / Import balances instead.');
+  let dir=await v31GetHandle();
+  if(!dir){if(opts.auto)return v31Status('Pick your Transaction Data folder first (Load latest → choose folder).','bad');dir=await v31PickFolder();if(!dir)return}
+  let perm=await dir.queryPermission({mode:'read'});
+  if(perm!=='granted'){
+    if(opts.auto)return v31Status('Folder access needs a click — tap “Load latest from Monarch”.','warn');
+    try{perm=await dir.requestPermission({mode:'read'})}catch(e){perm='denied'}
+    if(perm!=='granted')return v26Toast('Folder access was not allowed.');
+  }
+  _v31Busy=true;v31Status('Loading newest Monarch files…','');
+  try{
+    const tx=await v31Newest(dir,'Transactions'),bal=await v31Newest(dir,'Balances');
+    if(!tx&&!bal){v31Status(`No Transactions_ or Balances_ CSVs found in “${dir.name}”.`,'bad');return}
+    const out=[];
+    if(tx){const before=state.lastTxnImport;out.push(await v31RunImport(importTransactions,tx,()=>state.lastTxnImport!==before)||'Transactions imported.')}
+    if(bal){
+      const before=JSON.stringify(state.accounts.map(a=>[a.id,a.balance]))+state.lastBalImport;
+      const msg=await v31RunImport(importBalances,bal,()=>JSON.stringify(state.accounts.map(a=>[a.id,a.balance]))+state.lastBalImport!==before||($('balMapModal')&&$('balMapModal').classList.contains('open')));
+      out.push(($('balMapModal')&&$('balMapModal').classList.contains('open'))?'Balances need account matching — finish the popup.':(msg||'Balances imported.'));
+    }
+    state.settings.lastAutoLoad={at:new Date().toISOString(),tx:tx?tx.name:null,bal:bal?bal.name:null};save();renderAll();
+    v31Status(`✅ Loaded ${[tx&&tx.name,bal&&bal.name].filter(Boolean).join(' + ')}. ${out.join(' ')}`,'good');
+  }catch(e){console.warn(e);v31Status('Load failed: '+e.message,'bad')}
+  finally{_v31Busy=false}
+}
+function v31Status(msg,cls){
+  const el=$('v31LoadStatus');if(el){el.style.display='';el.innerHTML=`<div class="alertrow ${cls==='bad'?'bad':cls==='warn'?'warn':''}" style="margin:0"><div>${esc(msg)}</div><button class="btn small" onclick="this.closest('#v31LoadStatus').style.display='none'">Dismiss</button></div>`}
+  try{v26Toast(msg)}catch(e){}
+  document.title=(cls==='good'?'✅ ':cls==='bad'?'⚠️ ':'')+'Claudia Cash';
+}
+async function v31UpdateBtn(h){
+  h=h||await v31GetHandle();const n=$('v31FolderName');if(n)n.textContent=h?`Folder: ${h.name}`:'No folder chosen';
+}
+(function v31Mount(){
+  const bar=document.querySelector('#dashboard .topbar .actions')||document.querySelector('.topbar .actions');
+  if(bar&&!$('v31LoadBtn')){
+    bar.insertAdjacentHTML('afterbegin',`<button id="v31LoadBtn" class="btn primary" onclick="v31LoadLatest()" title="Import the newest Monarch CSVs from your Transaction Data folder">⚡ Load latest from Monarch</button><button class="btn small" onclick="v31PickFolder()" title="Choose the folder Monarch CSVs are saved to">📁</button>`);
+    bar.closest('.topbar').insertAdjacentHTML('afterend',`<div id="v31LoadStatus" style="display:none;margin-bottom:12px"></div>`);
+  }
+  if(!v31Supported()){const b=$('v31LoadBtn');if(b)b.style.display='none';const f=b&&b.nextElementSibling;if(f)f.style.display='none'}
+  // ?autoload=1 → load without a click when folder access is already allowed (used by the daily scheduled run)
+  if(/[?&]autoload=1/.test(location.search))setTimeout(()=>v31LoadLatest({auto:true}),2500);
+})();
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
 document.getElementById('settingsVer').textContent='App version '+APP_VERSION;
