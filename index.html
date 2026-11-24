@@ -568,7 +568,7 @@ tr.clickrow{cursor:pointer}tr.clickrow:hover td{background:rgba(127,127,127,.08)
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v34'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v35'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -5548,6 +5548,187 @@ async function v34SeedFromBackup(){
 let _v34SeedTried=false;
 const _v34RA3=renderAll;
 renderAll=function(){_v34RA3();if(!_v34SeedTried&&state&&state.v33&&state.v33.log&&state.v33.log.length&&!(state.v33.seeded)){_v34SeedTried=true;setTimeout(()=>{v34SeedFromBackup().catch(e=>console.warn('v34 seed',e))},1500)}};
+
+
+/* ============================================================
+   v35
+   1. Menu: on phones a ☰ Menu button opens the full menu in its
+      own scrolling panel; on larger screens the side menu scrolls
+      on its own, separately from the page.
+   2. Smart Clearing table: pending and cleared dates side by side
+      with the days between them, pending and cleared amounts side
+      by side, and Change = how much the cleared amount moved from
+      the pending amount (+$10.00 when $30.87 cleared as $40.87).
+   3. Every pending → cleared pair is checked. Pairs that don't look
+      right go to "Needs review" with Confirm / Not a match, and
+      don't count in the totals until you confirm them.
+   ============================================================ */
+(function v35Menu(){
+  document.head.insertAdjacentHTML('beforeend',`<style id="v35css">
+  @media(min-width:1051px){.sidebar{overflow-y:auto;overscroll-behavior:contain;height:100vh;height:100dvh;-webkit-overflow-scrolling:touch}}
+  #v35MenuBtn{display:none}
+  #clearingBody td.money{white-space:nowrap}
+  @media(max-width:1050px){
+    #v35MenuBtn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--panel2);color:var(--text);padding:7px 12px;border-radius:999px;font-size:14px;font-weight:800}
+    .sbnav{display:none!important}
+    .sidebar.v35open .sbnav{display:block!important;position:fixed;left:0;right:0;bottom:0;top:var(--v35top,96px);margin:0;padding:10px 12px calc(24px + env(safe-area-inset-bottom));overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;background:var(--modalbg,var(--panel));z-index:60;border-top:1px solid var(--line)}
+    .sidebar.v35open .sbnav .navbtn,.sidebar.v35open .sbnav .navbtn.sub{display:block;width:100%;box-sizing:border-box;text-align:left;margin:3px 0;padding:13px 14px;font-size:16px}
+    .sidebar.v35open .sbnav{box-sizing:border-box;right:auto!important;width:100vw!important;max-width:100vw}
+    .sidebar.v35open .sbnav .navbtn.sub{padding-left:30px}
+    .sidebar.v35open .sbnav .navgroup{display:flex!important;margin:14px 0 4px}
+    .sidebar.v35open .sbnav .navkids,.sidebar.v35open .sbnav .navkids.collapsed{display:block!important}
+    body.v35lock{overflow:hidden;touch-action:none}
+    body.v35lock .sbnav{touch-action:pan-y}
+  }</style>`);
+  const top=document.querySelector('.sbtop');if(!top)return;
+  top.insertAdjacentHTML('beforeend','<button id="v35MenuBtn" type="button" onclick="v35ToggleMenu()" aria-label="Open menu">☰ <span id="v35MenuLbl">Menu</span></button>');
+  document.querySelectorAll('.sbnav .navbtn').forEach(b=>b.addEventListener('click',()=>v35ToggleMenu(false)));
+  window.addEventListener('resize',()=>{if(innerWidth>1050)v35ToggleMenu(false)});
+})();
+function v35ToggleMenu(open){
+  const sb=document.querySelector('.sidebar');if(!sb)return;
+  const on=open===undefined?!sb.classList.contains('v35open'):!!open;
+  if(on){const h=sb.getBoundingClientRect().bottom;sb.style.setProperty('--v35top',Math.max(56,Math.round(h))+'px')}
+  sb.classList.toggle('v35open',on);document.body.classList.toggle('v35lock',on);
+  const lbl=$('v35MenuLbl');if(lbl){if(on)lbl.textContent='Close';else{const a=document.querySelector('.sbnav .navbtn.active');lbl.textContent=a?a.textContent.replace(/^[^\w&]+/,'').trim():'Menu'}}
+}
+const _v35ShowTab=showTab;
+showTab=function(id){_v35ShowTab.apply(this,arguments);try{v35ToggleMenu(false)}catch(e){}};
+
+/* ---------- change = how much the cleared amount moved from pending ---------- */
+function v35Change(e){if(e.cAmt==null||e.pAmt==null)return null;return Math.round((Math.abs(e.cAmt)-Math.abs(e.pAmt))*100)/100}
+/* colour by what it does to your money: a charge that grew (or a deposit that shrank) is bad */
+function v35ChangeCls(e,ch){if(ch==null||Math.abs(ch)<0.005)return 'muted';const debit=Number(e.pAmt)<0;return (debit?ch>0:ch<0)?'bad':'good'}
+function v35ChangeTxt(ch){if(ch==null)return '';if(Math.abs(ch)<0.005)return 'same';return (ch>0?'+':'−')+'$'+Math.abs(ch).toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g,',')}
+
+/* ---------- is this pair believable? ---------- */
+const V35_TIP_CATS=/restaurant|bar|dining|food|coffee|cafe|drink|nightlife|alcohol|entertainment|fast food|delivery|rideshare|taxi|uber|lyft|gas|fuel/i;
+function v35Check(e,c){
+  const s=v34St(),why=[];
+  if(!c)return {ok:false,why:['The cleared charge is no longer in the app.']};
+  const pa=Math.abs(Number(e.pAmt)),ca=Math.abs(Number(c.amount));
+  const p={merchant:e.pMerchant||e.merchant,statement:e.pStatement||'',account:e.account};
+  const sim=v34MerchSim(p,c);
+  const days=daysBetween(e.pDate,c.date);
+  const auth=pa<=1.01;
+  const merch=cleanVendor(c.merchant||e.merchant);
+  const learned=(s.okMerchants||{})[merch];
+  if(sim<3&&!learned)why.push('Merchant names differ ('+(p.merchant||'?')+' vs '+(c.merchant||'?')+').');
+  if(days>5)why.push('Took '+days+' days to clear.');
+  if(!auth&&pa>0){
+    const r=ca/pa;
+    if(r<0.9)why.push('Cleared for '+Math.round((1-r)*100)+'% less than it showed while pending.');
+    else if(r>1.35&&!learned&&!V35_TIP_CATS.test(c.category||''))why.push('Cleared for '+Math.round((r-1)*100)+'% more than it showed while pending.');
+  }
+  if(auth&&ca>300)why.push('A $1 hold turned into '+money(ca)+'.');
+  // another charge in the same account matches the pending amount exactly, so it may be the real one
+  if(!auth&&Math.abs(pa-ca)>=0.005){
+    const alt=(state.transactions||[]).find(t=>t.id!==c.id&&t.account===e.account&&Math.abs(Math.abs(Number(t.amount))-pa)<0.005&&Math.abs(daysBetween(e.pDate,t.date))<=7&&v34MerchSim(p,t)>=2);
+    if(alt)why.push('Another '+esc(alt.merchant)+' charge on '+shortDate(alt.date)+' matches the pending amount exactly.');
+  }
+  return {ok:!why.length,why};
+}
+function v35ReviewAll(){
+  const s=v34St(),byId=new Map((state.transactions||[]).map(t=>[t.id,t]));let n=0;
+  s.clears.forEach(e=>{
+    if(e.kind!=='cleared'||e.inPlace||e.review==='confirmed'||e.review==='rejected')return;
+    const c=byId.get(e.cTxnId),r=v35Check(e,c);
+    if(r.ok){if(e.review==='needs'){delete e.review;delete e.why;if(c&&e.wasHidden){c.v34was={amt:e.pAmt,date:e.pDate};delete e.wasHidden}}}
+    else{if(e.review!=='needs')n++;e.review='needs';e.why=r.why;if(c&&c.v34was){delete c.v34was;e.wasHidden=true}}
+  });
+  return n;
+}
+/* pending merchant kept on new events so pairs can be checked */
+const _v35Event=v34Event;
+v34Event=function(kind,p,c,extra){return Object.assign(_v35Event(kind,p,c,extra),{pMerchant:p&&p.merchant||''})};
+/* after an import commits pairs: check them; doubtful ones don't take over bill matches */
+const _v35Commit=v34Commit;
+v34Commit=function(pairs,releasedIds,lostIds){
+  const s=v34St(),before=s.clears.length;
+  const was=new Map();(state.assignments||[]).forEach(a=>{if(a.matchedTxnId)was.set(a.id,a.matchedTxnId)});
+  const r=_v35Commit(pairs,releasedIds,lostIds);
+  const fresh=s.clears.slice(0,Math.max(0,s.clears.length-before));
+  const byId=new Map(state.transactions.map(t=>[t.id,t]));let doubt=0;
+  fresh.forEach(e=>{
+    if(e.kind!=='cleared')return;const c=byId.get(e.cTxnId),chk=v35Check(e,c);if(chk.ok)return;
+    doubt++;e.review='needs';e.why=chk.why;if(c&&c.v34was){delete c.v34was;e.wasHidden=true}
+    // a bill that was matched to the pending charge doesn't move to a doubtful cleared charge
+    (state.assignments||[]).forEach(a=>{const pid=was.get(a.id);if(pid&&pairs.some(x=>x.p===pid&&x.c===e.cTxnId)&&a.matchedTxnId===e.cTxnId){a.matchedTxnId=null;if(!a.manual)a.paid=false}});
+  });
+  r.doubtful=doubt;return r;
+};
+function v35Confirm(id){
+  const s=v34St(),e=s.clears.find(x=>x.id===id);if(!e)return;
+  e.review='confirmed';delete e.why;
+  const c=state.transactions.find(t=>t.id===e.cTxnId);
+  if(c&&(Math.abs(Math.abs(c.amount)-Math.abs(e.pAmt))>0.004||c.date!==e.pDate))c.v34was={amt:e.pAmt,date:e.pDate};
+  delete e.wasHidden;
+  if(!s.okMerchants)s.okMerchants={};const m=cleanVendor((c&&c.merchant)||e.merchant);if(m)s.okMerchants[m]=true;
+  save();runMatching();renderAll();
+}
+function v35Reject(id){
+  const s=v34St(),e=s.clears.find(x=>x.id===id);if(!e)return;
+  const c=state.transactions.find(t=>t.id===e.cTxnId);if(c&&c.v34was&&c.v34was.amt===e.pAmt)delete c.v34was;
+  Object.assign(e,{kind:'released',review:'rejected',noMatch:true,cDate:null,cAmt:null,diff:null,days:null,cTxnId:null,cStatement:''});delete e.why;delete e.wasHidden;
+  save();renderAll();
+}
+function v35ConfirmAll(){const s=v34St();s.clears.filter(e=>e.review==='needs').forEach(e=>{e.review='confirmed';delete e.why;const c=state.transactions.find(t=>t.id===e.cTxnId);if(c&&e.wasHidden)c.v34was={amt:e.pAmt,date:e.pDate};delete e.wasHidden});save();renderAll()}
+
+/* ---------- Smart Clearing page (replaces v34's) ---------- */
+let _v35Checked=false;
+renderClearing=function(){
+  const el=$('clearingBody');if(!el)return;
+  const s=v34St(),now=today(),mk=now.slice(0,7);
+  if(!_v35Checked){_v35Checked=true;if(v35ReviewAll()>=0)save()}
+  if(!['changed','all','released','review'].includes(_v34View))_v34View='changed';
+  const pend=v34PendingRows().sort((a,b)=>a.date.localeCompare(b.date));
+  const stuck=pend.filter(t=>daysBetween(t.date,now)>V34_STUCK_DAYS);
+  const good=e=>e.kind==='cleared'&&e.review!=='needs';
+  const C=s.clears.filter(good),R=s.clears.filter(e=>e.kind==='released'),N=s.clears.filter(e=>e.review==='needs');
+  const ch=e=>v35Change(e);
+  const chg=C.filter(e=>Math.abs(ch(e)||0)>=0.01);
+  const monthC=C.filter(e=>(e.cDate||'').slice(0,7)===mk),monthChg=monthC.filter(e=>Math.abs(ch(e)||0)>=0.01);
+  const monthNet=monthChg.reduce((a,e)=>a+ch(e),0);
+  const avgDays=C.length?C.reduce((a,e)=>a+Math.max(0,e.days||0),0)/C.length:0;
+  const pendOut=pend.filter(t=>Number(t.amount)<0).reduce((a,t)=>a-Number(t.amount),0);
+  const rb=$('v34RevBtn');if(rb){const n=s.pending?((s.pending.pairs||[]).length+(s.pending.released||[]).length+(s.pending.ids||[]).length):0;rb.style.display=n?'':'none';rb.textContent=`Review ${n} waiting`;rb.className=n?'btn primary':'btn'}
+  // patterns
+  const byM=new Map();chg.forEach(e=>{const k=cleanVendor(e.merchant);if(!byM.has(k))byM.set(k,[]);byM.get(k).push(e)});
+  const pat=[...byM.entries()].filter(([k,l])=>l.length>=2).map(([k,l])=>({k,n:l.length,pct:l.reduce((a,e)=>a+ch(e)/Math.abs(e.pAmt||1),0)/l.length,net:l.reduce((a,e)=>a+ch(e),0),e:l[0]})).sort((a,b)=>Math.abs(b.net)-Math.abs(a.net)).slice(0,8);
+  const cp=v34CashPending(),accts=[...new Map(cp.map(x=>[x.a.id,x.a])).values()];
+  const view=_v34View,list=view==='all'?C:view==='changed'?chg:view==='review'?N:R;
+  const sorted=list.slice().sort((a,b)=>String(b.cDate||b.pDate).localeCompare(String(a.cDate||a.pDate)));
+  const tag=e=>(e.seeded?' <span class="muted" style="font-size:10px" title="Matched afterwards from a backup">rebuilt</span>':'')+(e.review==='confirmed'?' <span class="muted" style="font-size:10px">✓ confirmed</span>':'');
+  const head=view==='released'
+    ?'<tr><th>Merchant</th><th>Pending date</th><th class="money">Pending amt</th><th>What happened</th></tr>'
+    :'<tr><th>Merchant</th><th>Pending date</th><th>Cleared date</th><th class="money">Days</th><th class="money">Pending amt</th><th class="money">Cleared amt</th><th class="money">Change</th>'+(view==='review'?'<th></th>':'')+'</tr>';
+  const rowHtml=e=>{
+    const m=`<td>${esc(e.merchant)}${tag(e)}<div class="muted" style="font-size:10px">${esc(e.account)}</div>${e.why&&e.review==='needs'?`<div class="warn" style="font-size:11px;margin-top:3px">${e.why.map(esc).join('<br>')}</div>`:''}</td>`;
+    if(view==='released')return `<tr>${m}<td>${shortDate(e.pDate)}<div class="muted" style="font-size:10px">${esc((e.pStatement||'').slice(0,34))}</div></td><td class="money">${money(e.pAmt)}</td><td><span class="pill high">${e.review==='rejected'?'not a match':e.noMatch?'no cleared match':'released'}</span></td></tr>`;
+    const c=ch(e);
+    return `<tr${e.review==='needs'?' style="background:rgba(251,191,36,.06)"':''}>${m}<td>${shortDate(e.pDate)}<div class="muted" style="font-size:10px">${esc((e.pStatement||'').slice(0,30))}</div></td><td>${e.cDate?shortDate(e.cDate):''}<div class="muted" style="font-size:10px">${esc((e.cStatement||'').slice(0,30))}</div></td><td class="money">${e.days!=null?(e.days===0?'same day':e.days+(e.days===1?' day':' days')):''}</td><td class="money">${money(e.pAmt)}</td><td class="money">${e.cAmt!=null?money(e.cAmt):''}</td><td class="money ${v35ChangeCls(e,c)}" style="font-weight:800">${v35ChangeTxt(c)}</td>${view==='review'?`<td class="right" style="white-space:nowrap"><button class="btn small primary" onclick="v35Confirm('${e.id}')">Confirm</button> <button class="btn small" onclick="v35Reject('${e.id}')">Not a match</button></td>`:''}</tr>`;
+  };
+  el.innerHTML=`
+  ${N.length?`<div class="card" style="margin-bottom:14px;border-color:#fbbf24"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><div><b>⚠️ ${N.length} pending → cleared match${N.length===1?'':'es'} need${N.length===1?'s':''} a look</b><div class="muted" style="font-size:12px">These don't count in the totals below until you confirm them.</div></div><button class="btn small primary" onclick="v34SetView('review')">Review them</button></div></div>`:''}
+  <div class="grid v34four" style="margin-bottom:14px">
+    <div class="card"><div class="kpi-label">Pending now</div><div class="kpi-value">${money(pendOut)}</div><div class="kpi-foot">${pend.length} charge${pend.length===1?'':'s'}${stuck.length?` · <span class="bad">${stuck.length} stuck</span>`:''}</div></div>
+    <div class="card"><div class="kpi-label">Change at clearing · ${monthShort(mk)}</div><div class="kpi-value ${monthNet>0.004?'bad':monthNet<-0.004?'good':''}">${monthChg.length?v35ChangeTxt(monthNet):'$0.00'}</div><div class="kpi-foot">${monthChg.length} of ${monthC.length} cleared for a different amount</div></div>
+    <div class="card"><div class="kpi-label">Released holds</div><div class="kpi-value">${R.length}</div><div class="kpi-foot">Pending charges that never cleared</div></div>
+    <div class="card"><div class="kpi-label">Average time to clear</div><div class="kpi-value">${C.length?avgDays.toFixed(1)+' days':'—'}</div><div class="kpi-foot">${C.length} cleared so far</div></div>
+  </div>
+  <div class="grid two">
+    <div class="card"><h2>⏳ Pending now</h2>${pend.length?`<table><thead><tr><th>Date</th><th>Merchant</th><th>Account</th><th class="money">Amount</th><th>Age</th></tr></thead><tbody>${pend.slice().reverse().map(t=>{const age=daysBetween(t.date,now),b=(state.assignments||[]).find(a=>a.matchedTxnId===t.id),bill=b&&state.bills.find(x=>x.id===b.billId);return `<tr><td>${shortDate(t.date)}</td><td>${esc(t.merchant)}${bill?`<div class="muted" style="font-size:10px">pays ${esc(bill.name)}</div>`:''}</td><td>${esc(t.account)}</td><td class="money">${money(t.amount)}</td><td>${age>V34_STUCK_DAYS?`<span class="pill high">${age}d stuck</span>`:age+'d'}</td></tr>`}).join('')}</tbody></table>${stuck.length?`<div class="note" style="margin-top:8px">Stuck charges have been pending more than ${V34_STUCK_DAYS} days. They're usually holds Monarch never cleaned up. Check them in Monarch and delete them there if the bank shows nothing.</div>`:''}`:'<div class="empty">Nothing pending right now.</div>'}</div>
+    <div class="card"><h2>Cash on hand and pending</h2><div class="note" style="margin-bottom:10px">Most banks' balances already subtract pending charges, so they're listed under Cash on hand but not taken off again. If an account's balance doesn't drop when a charge is still pending, set it to "Subtract pending" and the app will take that account's pending charges off Cash on hand.</div>
+    ${accts.length?`<table><tbody>${accts.map(a=>{const on=!s.notInBal[a.id],amt=cp.filter(x=>x.a.id===a.id).reduce((t,x)=>t+Number(x.t.amount),0);return `<tr><td>${esc(acctLabel(a))}<div class="muted" style="font-size:10px">${money(amt)} pending</div></td><td class="right"><select class="input" style="width:auto" onchange="v34ToggleBal('${a.id}',this.value==='in')"><option value="in" ${on?'selected':''}>Balance includes pending</option><option value="out" ${on?'':'selected'}>Subtract pending</option></select></td></tr>`}).join('')}</tbody></table>`:'<div class="empty">No cash accounts have pending charges right now.</div>'}
+    ${pat.length?`<h3 style="margin-top:16px">Patterns</h3><table><thead><tr><th>Merchant</th><th class="money">Times</th><th class="money">Usual change</th><th class="money">Total change</th></tr></thead><tbody>${pat.map(p=>`<tr><td>${esc(p.k)}</td><td class="money">${p.n}</td><td class="money ${v35ChangeCls(p.e,p.pct)}">${p.pct>0?'+':'−'}${Math.abs(p.pct*100).toFixed(0)}%</td><td class="money ${v35ChangeCls(p.e,p.net)}">${v35ChangeTxt(p.net)}</td></tr>`).join('')}</tbody></table><div class="muted" style="font-size:11px;margin-top:4px">+ means the charge cleared for more than it showed while pending.</div>`:''}
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">Pending vs cleared</h2><div class="actions">${N.length?`<button class="btn small ${view==='review'?'primary':''}" onclick="v34SetView('review')">⚠️ Needs review (${N.length})</button>`:''}<button class="btn small ${view==='changed'?'primary':''}" onclick="v34SetView('changed')">Changed (${chg.length})</button><button class="btn small ${view==='all'?'primary':''}" onclick="v34SetView('all')">All cleared (${C.length})</button><button class="btn small ${view==='released'?'primary':''}" onclick="v34SetView('released')">Never cleared (${R.length})</button></div></div>
+  ${view==='review'&&N.length>1?`<div class="actions" style="margin-top:10px"><button class="btn small" onclick="v35ConfirmAll()">Confirm all ${N.length}</button></div>`:''}
+  ${sorted.length?`<div style="overflow:auto;margin-top:10px"><table><thead>${head}</thead><tbody>${sorted.slice(0,400).map(rowHtml).join('')}</tbody></table>${sorted.length>400?'<div class="muted" style="margin-top:6px">Showing the newest 400.</div>':''}<div class="muted" style="font-size:11px;margin-top:6px">Change is how much the cleared amount moved from the pending amount: +$10.00 means it cleared $10 higher.</div></div>`:`<div class="empty" style="margin-top:10px">${view==='released'?'No released holds yet.':view==='review'?'Nothing needs review.':'Nothing yet. This fills in as pending charges clear on future imports.'}</div>`}
+  </div>`;
+};
+/* Transactions list: only show "was $X pending" for pairs that passed the check */
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
 document.getElementById('settingsVer').textContent='App version '+APP_VERSION;
