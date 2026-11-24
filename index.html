@@ -568,7 +568,7 @@ tr.clickrow{cursor:pointer}tr.clickrow:hover td{background:rgba(127,127,127,.08)
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v33'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v34'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -5151,6 +5151,403 @@ function v33DryRun(text){
   const staleNotPP=P.stale.filter(t=>!ids.has(t.id));
   return {fileRows:F.rows.length,appRows:state.transactions.length,toAdd:P.add.length,toRemove:P.stale.length,toRemoveSpend:Math.round(staleNotPP.filter(t=>Number(t.amount)<0).reduce((a,t)=>a-Number(t.amount),0)),paypalCopies:ids.size,stale:P.stale};
 }
+
+
+/* ============================================================
+   v34: Pending vs cleared ("Smart Clearing")
+   Monarch's export has a Pending flag and a unique Id on every row.
+   - Rows are now matched on Monarch's Id (older rows get their Id
+     filled in on the first import).
+   - Rows Monarch changed are updated in place (amount, date, pending).
+   - When a pending charge disappears, the app looks for the charge it
+     turned into (same account, similar merchant, a few days later,
+     a similar amount) and records the pair: pending amount, cleared
+     amount, difference and days to clear. Bills matched to the
+     pending row move to the cleared row.
+   - Pending charges that disappear with no cleared twin are recorded
+     as released holds. Anything pending over 7 days is flagged.
+   - Bank balances from Monarch usually already include pending
+     charges, so Cash on hand only lists them. Accounts you mark as
+     "balance doesn't include pending" have them subtracted.
+   ============================================================ */
+const V34_STUCK_DAYS=7;
+function v34St(){const s=v33St();if(!s.ppIds)s.ppIds={};if(!s.clears)s.clears=[];if(!s.notInBal)s.notInBal={};return s}
+function v34IsTrue(v){return /^(true|yes|1)$/i.test(String(v||'').trim())}
+function v34ParseFile(text){
+  const rows=csvParse(text);if(rows.length<2)return null;
+  const heads=rows[0],out=[],count=new Map(),win=new Map();let hasId=false,hasPending=false;
+  for(const r of rows.slice(1)){
+    const o={};heads.forEach((h,i)=>o[h]=r[i]||'');
+    const date=pick(o,['Date','Transaction Date','Posted Date']);if(!date)continue;
+    const d=new Date(date);if(isNaN(d))continue;const ds=d.toISOString().slice(0,10);
+    const merchant=pick(o,['Merchant','Original Statement','Description','Name'])||'Unknown';
+    const category=pick(o,['Category'])||'Uncategorized',account=pick(o,['Account','Account Name'])||'',amount=parseAmount(pick(o,['Amount','Transaction Amount']));
+    const mid=String(pick(o,['Id','Transaction Id','ID'])||'').trim(),pv=pick(o,['Pending']);
+    if(mid)hasId=true;if(String(pv).trim())hasPending=true;
+    const hash=v33Hash(ds,merchant,account,amount);
+    out.push({date:ds,merchant,category,account,amount,statement:pick(o,['Original Statement','Description']),notes:pick(o,['Notes','Note']),hash,mid,pending:v34IsTrue(pv)});
+    count.set(hash,(count.get(hash)||0)+1);
+    const w=win.get(account);if(!w)win.set(account,{min:ds,max:ds});else{if(ds<w.min)w.min=ds;if(ds>w.max)w.max=ds}
+  }
+  return {rows:out,count,win,hasId,hasPending};
+}
+/* ---------- matching a vanished pending charge to the charge it became ---------- */
+const V34_STOP=new Set(['the','and','purchase','mobile','pos','debit','card','checkcard','payment','recurring','ach','hold','des','id','inc','llc','com','www','store','fl','usa','pp','sq','tst','paypal','xxxxx']);
+function v34Tokens(t){return new Set(String((t.merchant||'')+' '+(t.statement||'')).toLowerCase().replace(/[^a-z ]+/g,' ').split(/\s+/).filter(w=>w.length>=3&&!V34_STOP.has(w)))}
+function v34MerchSim(a,b){
+  const ma=norm(a.origMerchant||a.merchant),mb=norm(b.origMerchant||b.merchant);
+  if(ma&&ma===mb)return 3;
+  const ta=v34Tokens(a),tb=v34Tokens(b);let n=0;ta.forEach(w=>{if(tb.has(w))n++});
+  return n>=2?2.5:n===1?2:0;
+}
+function v34PairScore(p,c){
+  if(p.account!==c.account)return -1;
+  const days=daysBetween(p.date,c.date);if(days<-2||days>10)return -1;
+  const pa=Number(p.amount),ca=Number(c.amount);if(!pa||!ca||Math.sign(pa)!==Math.sign(ca))return -1;
+  const sim=v34MerchSim(p,c);if(sim<2)return -1;
+  const exact=Math.abs(pa-ca)<0.005,r=Math.abs(ca)/Math.abs(pa);
+  const authTest=Math.abs(pa)<=1.01; // $1 gas-pump style authorizations
+  if(!exact&&!authTest&&(r<0.25||r>2))return -1;
+  return sim*10-Math.abs(days)-(exact?0:Math.min(5,Math.abs(r-1)*5));
+}
+function v34PairUp(gone,cands){
+  const opts=[];
+  gone.forEach(p=>cands.forEach(c=>{if(c.id===p.id)return;const s=v34PairScore(p,c);if(s>=0)opts.push([s,p,c])}));
+  opts.sort((a,b)=>b[0]-a[0]);
+  const usedP=new Set(),usedC=new Set(),pairs=[];
+  for(const [s,p,c] of opts){if(usedP.has(p.id)||usedC.has(c.id))continue;usedP.add(p.id);usedC.add(c.id);pairs.push({p,c,score:s})}
+  return pairs;
+}
+function v34ClearedTargets(){const s=v34St();return new Set(s.clears.filter(e=>e.cTxnId).map(e=>e.cTxnId))}
+/* ---------- the plan: what an import will do (changes nothing) ---------- */
+function v34Plan(F){
+  const s=v34St(),T=state.transactions||[],keep=new Set(s.keep||[]);
+  const inWin=t=>{const w=F.win.get(t.account);return !!w&&t.date>=w.min&&t.date<=w.max};
+  const fileByMid=new Map();F.rows.forEach(r=>{if(r.mid)fileByMid.set(r.mid,r)});
+  const appByMid=new Map();T.forEach(t=>{if(t.mid)appByMid.set(t.mid,t)});
+  // file rows that already have an app row (by Id)
+  const claimed=new Set();F.rows.forEach(r=>{if(r.mid&&appByMid.has(r.mid))claimed.add(r)});
+  // backfill: app rows without an Id get the Id of an unclaimed file row with the same key
+  const freeByHash=new Map();F.rows.forEach(r=>{if(claimed.has(r)||(r.mid&&s.ppIds[r.mid]))return;if(!freeByHash.has(r.hash))freeByHash.set(r.hash,[]);freeByHash.get(r.hash).push(r)});
+  const backfill=[];
+  T.forEach(t=>{if(t.mid||!inWin(t))return;const l=freeByHash.get(t.hash);if(l&&l.length){const r=l.shift();claimed.add(r);backfill.push([t,r])}});
+  // PayPal copies dropped by v33 (stored by key) stay dropped
+  const ppHashLeft=Object.assign({},s.ppDropped||{});
+  // updates: same Id, something changed
+  const updates=[];
+  const fieldsDiffer=(t,r)=>Math.abs(Number(t.amount)-r.amount)>0.004||t.date!==r.date||!!t.pending!==r.pending||(r.statement&&t.statement!==r.statement)||t.account!==r.account;
+  T.forEach(t=>{const r=t.mid?fileByMid.get(t.mid):null;if(r&&fieldsDiffer(t,r))updates.push([t,r])});
+  backfill.forEach(([t,r])=>{if(fieldsDiffer(t,r))updates.push([t,r])});
+  // adds
+  const add=[];
+  F.rows.forEach(r=>{
+    if(claimed.has(r))return;
+    if(r.mid&&s.ppIds[r.mid])return;
+    if(ppHashLeft[r.hash]>0){ppHashLeft[r.hash]--;return}
+    add.push(r);
+  });
+  // gone: app rows in the window with no file row
+  const backfilled=new Set(backfill.map(([t])=>t.id));
+  const gone=T.filter(t=>inWin(t)&&!keep.has(t.id)&&(t.mid?!fileByMid.has(t.mid):!backfilled.has(t.id)));
+  // pair gone rows with the charge they became: new rows, rows that just changed, and recent posted rows not already a pair
+  const targets=v34ClearedTargets(),goneIds=new Set(gone.map(t=>t.id));
+  const minDate=gone.reduce((m,t)=>t.date<m?t.date:m,'9999');
+  const addAsTxn=add.map((r,i)=>Object.assign({id:'new:'+i},r));
+  const cands=addAsTxn.concat(T.filter(t=>!goneIds.has(t.id)&&!targets.has(t.id)&&t.date>=addDays(minDate,-2)&&!t.pending)).filter(c=>!c.pending);
+  const pairs=v34PairUp(gone,cands);
+  const paired=new Set(pairs.map(x=>x.p.id));
+  const unpaired=gone.filter(t=>!paired.has(t.id));
+  const released=unpaired.filter(t=>t.pending===true);
+  const lost=unpaired.filter(t=>t.pending!==true);
+  return {add,addAsTxn,updates,backfill,gone,pairs,released,lost,hasId:F.hasId,hasPending:F.hasPending};
+}
+function v34Event(kind,p,c,extra){
+  const pa=Number(p.amount),ca=c?Number(c.amount):null;
+  return Object.assign({id:uid(),kind,at:new Date().toISOString(),account:p.account,merchant:(c&&c.merchant)||p.merchant,
+    pDate:p.date,pAmt:pa,pStatement:(p.statement||'').slice(0,80),
+    cDate:c?c.date:null,cAmt:ca,cStatement:c?(c.statement||'').slice(0,80):'',cTxnId:c?c.id:null,
+    diff:c?Math.round((ca-pa)*100)/100:null,days:c?daysBetween(p.date,c.date):null,wasFlagged:p.pending===true},extra||{});
+}
+/* apply a plan; when review is true the removals wait for the review list */
+function v34Apply(P,opts){
+  opts=opts||{};const s=v34St(),now=new Date().toISOString();
+  // backfill Ids
+  P.backfill.forEach(([t,r])=>{t.mid=r.mid});
+  // updates in place (and pending → cleared on the same Id)
+  P.updates.forEach(([t,r])=>{
+    if(t.pending===true&&!r.pending){s.clears.unshift(v34Event('cleared',{...t},{...t,amount:r.amount,date:r.date,statement:r.statement||t.statement},{inPlace:true}));
+      if(Math.abs(Number(t.amount)-r.amount)>0.004||t.date!==r.date)t.v34was={amt:Number(t.amount),date:t.date}}
+    t.amount=r.amount;t.date=r.date;if(r.pending)t.pending=true;else delete t.pending;if(r.statement)t.statement=r.statement;t.account=r.account;
+    t.hash=r.hash;
+  });
+  // adds
+  const newIds=new Map();
+  P.addAsTxn.forEach(r=>{const id=uid();newIds.set(r.id,id);const row={id,date:r.date,merchant:r.merchant,category:r.category,account:r.account,amount:r.amount,statement:r.statement,notes:r.notes,hash:r.hash,mid:r.mid||undefined};if(r.pending)row.pending=true;state.transactions.push(row)});
+  const realId=c=>newIds.get(c.id)||c.id;
+  const total=P.pairs.length+P.released.length+P.lost.length;
+  const legacy=P.gone.filter(t=>!t.mid).length;
+  const needsReview=opts.review||P.lost.length>V33_AUTO_MAX||(legacy>V33_AUTO_MAX);
+  if(needsReview&&total){
+    s.pending={at:now,file:opts.file||'',pairs:P.pairs.map(x=>({p:x.p.id,c:realId(x.c)})),released:P.released.map(t=>t.id),ids:P.lost.map(t=>t.id)};
+    return {added:P.addAsTxn.length,updated:P.updates.length,cleared:0,released:0,removed:0,review:total};
+  }
+  const r=v34Commit(P.pairs.map(x=>({p:x.p.id,c:realId(x.c)})),P.released.map(t=>t.id),P.lost.map(t=>t.id));
+  s.pending=null;
+  return Object.assign({added:P.addAsTxn.length,updated:P.updates.length,review:0},r);
+}
+/* remove vanished rows, record their history, move bill matches to the cleared charge */
+function v34Commit(pairs,releasedIds,lostIds){
+  const s=v34St(),byId=new Map(state.transactions.map(t=>[t.id,t]));
+  let cleared=0,released=0;
+  pairs.forEach(({p,c})=>{
+    const pt=byId.get(p),ct=byId.get(c);if(!pt||!ct)return;
+    s.clears.unshift(v34Event('cleared',pt,ct));
+    if(Math.abs(Number(pt.amount)-Number(ct.amount))>0.004||pt.date!==ct.date)ct.v34was={amt:Number(pt.amount),date:pt.date};
+    (state.assignments||[]).forEach(a=>{if(a.matchedTxnId===p&&!(state.assignments||[]).some(x=>x.matchedTxnId===c))a.matchedTxnId=c});
+    cleared++;
+  });
+  (releasedIds||[]).forEach(id=>{const t=byId.get(id);if(!t)return;s.clears.unshift(v34Event('released',t,null));released++});
+  const removed=v33RemoveTxns([...pairs.map(x=>x.p),...(releasedIds||[]),...(lostIds||[])]);
+  s.clears=s.clears.slice(0,3000);
+  return {cleared,released,removed};
+}
+function v34Import(ev){
+  const f=ev.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{
+    const F=v34ParseFile(rd.result);if(!F||!F.rows.length)return alert('No rows found.');
+    if(!F.hasId)return v33Import(ev); // older export without Ids: use the v33 path
+    const P=v34Plan(F),R=v34Apply(P,{file:f.name});
+    const pp=v34DropPayPal();
+    state.lastTxnImport=new Date().toISOString();
+    let _rn=0;try{if(typeof applyMerchantRenames==='function')_rn=applyMerchantRenames()}catch(e){}
+    v33Log({file:f.name,added:R.added,updated:R.updated,cleared:R.cleared,released:R.released,removed:R.removed,pending:R.review,ppDropped:pp.n});
+    save();runMatching();closeModal('txnImportModal');ev.target.value='';
+    const bits=[`Imported ${R.added} new transaction${R.added===1?'':'s'}.`];
+    if(R.updated)bits.push(`Updated ${R.updated} that changed in Monarch.`);
+    if(R.cleared)bits.push(`${R.cleared} pending charge${R.cleared===1?'':'s'} cleared.`);
+    if(R.released)bits.push(`${R.released} pending hold${R.released===1?'':'s'} released without clearing.`);
+    const other=(R.removed||0)-(R.cleared||0)-(R.released||0);if(other>0)bits.push(`Removed ${other} that Monarch no longer has.`);
+    if(pp.n)bits.push(`Dropped ${pp.n} PayPal duplicate${pp.n===1?'':'s'}.`);
+    if(_rn)bits.push(`Renamed ${_rn} merchant${_rn===1?'':'s'}.`);
+    if(R.review)bits.push(`${R.review} rows are no longer in Monarch — review them in Smart Clearing.`);
+    alert(bits.join(' '));renderAll();
+    if(R.review)setTimeout(v34OpenReview,400);
+  };
+  rd.readAsText(f);
+}
+function v34DropPayPal(){
+  // like v33, but remembers dropped copies by Monarch Id
+  const s=v34St(),before=new Map(state.transactions.map(t=>[t.id,t]));
+  const r=v33DropPayPalCopies();
+  if(r.n){const still=new Set(state.transactions.map(t=>t.id));before.forEach((t,id)=>{if(!still.has(id)&&t.mid&&isPayPalAcct(t.account)){s.ppIds[t.mid]=1;if(s.ppDropped[t.hash]){s.ppDropped[t.hash]--;if(s.ppDropped[t.hash]<=0)delete s.ppDropped[t.hash]}}})}
+  return r;
+}
+importTransactions=function(ev){const f=ev&&ev.target&&ev.target.files&&ev.target.files[0];if(!f)return;snapshotState('Before importing '+f.name).finally(()=>v34Import(ev))};
+
+/* ---------- review list (first run, or a big change) ---------- */
+function v34OpenReview(){
+  if(!$('v34ReviewModal'))document.body.insertAdjacentHTML('beforeend',`<div id="v34ReviewModal" class="modalback"><div class="modal" style="max-width:980px"><div class="modalhead"><h2>Rows no longer in Monarch</h2><button class="btn small" onclick="closeModal('v34ReviewModal')">Close</button></div><div id="v34ReviewBody"></div></div></div>`);
+  const s=v34St(),pd=s.pending,byId=new Map(state.transactions.map(t=>[t.id,t]));
+  if(!pd){$('v34ReviewBody').innerHTML='<div class="empty">Nothing waiting for review.</div>';return openModal('v34ReviewModal')}
+  // older v33 review: only ids
+  const pairs=(pd.pairs||[]).map(x=>({p:byId.get(x.p),c:byId.get(x.c)})).filter(x=>x.p&&x.c);
+  const rel=(pd.released||[]).map(id=>byId.get(id)).filter(Boolean),lost=(pd.ids||[]).map(id=>byId.get(id)).filter(Boolean);
+  const changed=pairs.filter(x=>Math.abs(Number(x.p.amount)-Number(x.c.amount))>0.004);
+  const net=pairs.reduce((a,x)=>a+(Number(x.c.amount)-Number(x.p.amount)),0);
+  const dbl=pairs.concat(lost.map(t=>({p:t}))).filter(x=>Number(x.p.amount)<0).reduce((a,x)=>a-Number(x.p.amount),0);
+  const row=(x)=>{const d=Number(x.c.amount)-Number(x.p.amount);return `<tr><td>${esc(x.c.merchant)}<div class="muted" style="font-size:10px">${esc(x.p.account)}</div></td><td>${shortDate(x.p.date)}<div class="muted" style="font-size:10px">${esc((x.p.statement||'').slice(0,34))}</div></td><td class="money">${money(x.p.amount)}</td><td>${shortDate(x.c.date)}<div class="muted" style="font-size:10px">${esc((x.c.statement||'').slice(0,34))}</div></td><td class="money">${money(x.c.amount)}</td><td class="money ${Math.abs(d)<0.005?'muted':d<0?'bad':'good'}">${Math.abs(d)<0.005?'same':(d>0?'+':'')+money(d)}</td></tr>`};
+  const one=t=>`<tr><td>${fmtDate(t.date)}</td><td>${esc(t.merchant)}</td><td>${esc(t.account)}</td><td class="money">${money(t.amount)}</td><td class="muted" style="font-size:11px">${esc((t.statement||'').slice(0,50))}</td></tr>`;
+  $('v34ReviewBody').innerHTML=`<div class="note" style="margin-bottom:12px">These rows are in the app but not in your Monarch file${pd.file?` (${esc(pd.file)})`:''}. Right now they double-count ${money(dbl)} of spending. A backup is saved before anything is removed.</div>
+  <div class="grid three" style="margin-bottom:12px"><div class="card"><div class="kpi-label">Pending → cleared</div><div class="kpi-value">${pairs.length}</div><div class="kpi-foot">${changed.length} cleared for a different amount (net ${net>=0?'+':''}${money(net)})</div></div>
+  <div class="card"><div class="kpi-label">Released holds</div><div class="kpi-value">${rel.length}</div><div class="kpi-foot">Were pending, never cleared</div></div>
+  <div class="card"><div class="kpi-label">No cleared match</div><div class="kpi-value">${lost.length}</div><div class="kpi-foot">Deleted or changed in Monarch, or a hold that dropped off</div></div></div>
+  <div class="actions" style="margin-bottom:12px"><button class="btn primary" onclick="v34ApplyReview(true)">Apply all (remove ${pairs.length+rel.length+lost.length})</button>${lost.length?`<button class="btn" onclick="v34ApplyReview(false)">Apply pairs only, keep the ${lost.length} unmatched</button>`:''}<button class="btn" onclick="closeModal('v34ReviewModal')">Not now</button></div>
+  <div style="max-height:50vh;overflow:auto">
+  ${pairs.length?`<h3>Pending → cleared</h3><table><thead><tr><th>Merchant</th><th>Pending</th><th class="money">Pending amt</th><th>Cleared</th><th class="money">Cleared amt</th><th class="money">Difference</th></tr></thead><tbody>${pairs.sort((a,b)=>Math.abs(Number(b.c.amount)-Number(b.p.amount))-Math.abs(Number(a.c.amount)-Number(a.p.amount))).map(row).join('')}</tbody></table>`:''}
+  ${rel.length?`<h3 style="margin-top:14px">Released holds</h3><table><tbody>${rel.map(one).join('')}</tbody></table>`:''}
+  ${lost.length?`<h3 style="margin-top:14px">No cleared match</h3><table><thead><tr><th>Date</th><th>Merchant</th><th>Account</th><th class="money">Amount</th><th>Statement</th></tr></thead><tbody>${lost.map(one).join('')}</tbody></table>`:''}
+  </div>`;
+  openModal('v34ReviewModal');
+}
+function v34ApplyReview(all){
+  const s=v34St(),pd=s.pending;if(!pd){if($('v34ReviewModal'))closeModal('v34ReviewModal');return}
+  snapshotState('Before applying Smart Clearing review').finally(()=>{
+    const lost=all?(pd.ids||[]):[];
+    if(!all)s.keep=[...new Set([...(s.keep||[]),...(pd.ids||[])])];
+    const r=v34Commit(pd.pairs||[],pd.released||[],lost);
+    s.pending=null;v33Log({review:all?'applied all':'applied pairs',cleared:r.cleared,released:r.released,removed:r.removed});
+    save();runMatching();renderAll();if($('v34ReviewModal'))closeModal('v34ReviewModal');
+    v26Toast(`Cleared ${r.cleared}, released ${r.released}, removed ${r.removed} in total.`);
+  });
+}
+v33OpenReview=v34OpenReview;
+/* convert a v33 review (ids only) into a v34 one with pairs, without importing again */
+function v34UpgradeV33Pending(){
+  const s=v34St(),pd=s.pending;if(!pd||pd.pairs)return false;
+  const byId=new Map(state.transactions.map(t=>[t.id,t]));
+  const gone=(pd.ids||[]).map(id=>byId.get(id)).filter(Boolean);if(!gone.length){s.pending=null;return false}
+  const goneIds=new Set(gone.map(t=>t.id)),targets=v34ClearedTargets();
+  const minDate=gone.reduce((m,t)=>t.date<m?t.date:m,'9999');
+  const cands=state.transactions.filter(t=>!goneIds.has(t.id)&&!targets.has(t.id)&&!t.pending&&t.date>=addDays(minDate,-2));
+  const pairs=v34PairUp(gone,cands),paired=new Set(pairs.map(x=>x.p.id));
+  s.pending={at:pd.at,file:pd.file,pairs:pairs.map(x=>({p:x.p.id,c:x.c.id})),released:[],ids:gone.filter(t=>!paired.has(t.id)).map(t=>t.id)};
+  return true;
+}
+
+/* ---------- pending in Cash on hand ---------- */
+function v34PendingRows(){return (state.transactions||[]).filter(t=>t.pending===true)}
+function v34CashPending(){
+  const s=v34St(),out=[];
+  v34PendingRows().forEach(t=>{const a=acctForTxnName(t.account);if(a&&isCashAcct(a))out.push({t,a,inBal:!s.notInBal[a.id]})});
+  return out;
+}
+const _v34CycleStats=cycleStats;
+cycleStats=function(c){
+  const st=_v34CycleStats(c);
+  try{
+    const P=v34CashPending();
+    const adj=P.filter(x=>!x.inBal).reduce((a,x)=>a+Number(x.t.amount||0),0);
+    st.pendingList=P;st.pendingAdj=adj;st.pendingTotal=P.reduce((a,x)=>a+Number(x.t.amount||0),0);
+    if(Math.abs(adj)>0.004){st.cashBeforePending=st.cash;st.cash+=adj;st.diff=st.cash-st.left}
+  }catch(e){console.warn('v34 pending',e)}
+  return st;
+};
+const _v34RenderDashboard=renderDashboard;
+renderDashboard=function(){
+  _v34RenderDashboard();
+  try{
+    const c=currentCycle();if(!c)return;const st=cycleStats(c);
+    const kc=$('kCash');if(!kc)return;const card=kc.parentElement,lab=card.querySelector('.kpi-label');
+    let el=$('v34CashPend');
+    if(!st.pendingList||!st.pendingList.length||!lab||lab.textContent!=='Cash on hand'){if(el)el.remove();}
+    else{
+      if(!el){card.insertAdjacentHTML('beforeend','<div id="v34CashPend" class="muted" style="font-size:11px;margin-top:4px"></div>');el=$('v34CashPend')}
+      const n=st.pendingList.length,tot=st.pendingTotal,sub=st.pendingList.filter(x=>!x.inBal).length;
+      el.innerHTML=`⏳ ${sub===n?'Minus':'Includes'} ${money(Math.abs(tot))} pending (${n})${sub&&sub<n?` · ${money(Math.abs(st.pendingAdj))} subtracted`:''}`;
+    }
+    // bills paid by a charge that's still pending
+    (st.as||[]).forEach(a=>{
+      if(!a.matchedTxnId)return;const t=state.transactions.find(x=>x.id===a.matchedTxnId);if(!t||t.pending!==true)return;
+      document.querySelectorAll(`#dashboard a[onclick*="openBillTxn('${a.id}')"]`).forEach(link=>{
+        const tr=link.closest('tr');if(!tr||tr.querySelector('.v34pp'))return;
+        const pill=[...tr.querySelectorAll('.pill.paid')].pop();if(pill)pill.insertAdjacentHTML('afterend','<div class="muted v34pp" style="font-size:10px">⏳ pending</div>');
+      });
+    });
+  }catch(e){console.warn('v34 dash',e)}
+};
+const _v34OpenKpi=openKpiDetail;
+openKpiDetail=function(kind){
+  _v34OpenKpi.apply(this,arguments);
+  try{
+    if(kind!=='cash')return;const c=currentCycle(),st=cycleStats(c),P=st.pendingList||[];if(!P.length)return;
+    const body=$('kpiModalBody');if(!body)return;
+    body.insertAdjacentHTML('beforeend',`<h3 style="margin-top:16px">⏳ Pending charges</h3><div class="note" style="margin-bottom:8px">Your bank balance usually already includes these. Ones marked "subtracted" are taken off Cash on hand because you set that account's balance as not including pending. Change it on the Smart Clearing page.</div>
+    <table><thead><tr><th>Date</th><th>Merchant</th><th>Account</th><th class="money">Amount</th><th></th></tr></thead><tbody>${P.sort((a,b)=>b.t.date.localeCompare(a.t.date)).map(x=>`<tr><td>${shortDate(x.t.date)}</td><td>${esc(x.t.merchant)}</td><td>${esc(acctLabel(x.a))}</td><td class="money">${money(x.t.amount)}</td><td class="muted" style="font-size:11px">${x.inBal?'in balance':'subtracted'}</td></tr>`).join('')}</tbody></table>`);
+  }catch(e){console.warn('v34 kpi',e)}
+};
+
+/* ---------- Transactions list: pending badge and "was $X pending" ---------- */
+const _v34RenderTxns=renderTransactions;
+renderTransactions=function(){
+  _v34RenderTxns.apply(this,arguments);
+  try{
+    const body=$('txnBody');if(!body)return;const byId=new Map(state.transactions.map(t=>[t.id,t]));
+    body.querySelectorAll('tr').forEach(tr=>{
+      const b=tr.querySelector('button[onclick^="openManualMatch"]');if(!b)return;
+      const id=(b.getAttribute('onclick').match(/openManualMatch\('([^']+)'/)||[])[1];const t=byId.get(id);if(!t)return;
+      const tds=tr.children;
+      if(t.pending===true&&tds[0]&&!tds[0].querySelector('.v34p'))tds[0].insertAdjacentHTML('beforeend','<div class="v34p"><span class="pill unpaid" style="font-size:10px">⏳ Pending</span></div>');
+      if(t.v34was&&tds[4]&&!tds[4].querySelector('.v34w')){const d=Number(t.amount)-t.v34was.amt;tds[4].insertAdjacentHTML('beforeend',`<div class="v34w muted" style="font-size:10px">${Math.abs(d)<0.005?'cleared':'was '+money(t.v34was.amt)} pending ${shortDate(t.v34was.date)}</div>`)}
+    });
+  }catch(e){console.warn('v34 txns',e)}
+};
+
+/* ---------- Smart Clearing page ---------- */
+(function v34Mount(){
+  if(!$('v34css'))document.head.insertAdjacentHTML('beforeend','<style id="v34css">.grid.v34four{grid-template-columns:repeat(4,minmax(0,1fr))}@media(max-width:900px){.grid.v34four{grid-template-columns:1fr 1fr}}</style>');
+  const ref=$('transactions');if(!ref||$('clearing'))return;
+  ref.insertAdjacentHTML('afterend',`<section id="clearing" class="section"><div class="topbar"><div><h1>Smart Clearing</h1><div class="sub">Pending charges, what they cleared for, and holds that never cleared.</div></div><div class="actions"><button class="btn" onclick="v34OpenReview()" id="v34RevBtn" style="display:none">Review</button></div></div><div id="clearingBody"></div></section>`);
+  const tb=document.querySelector('.navbtn[data-tab="transactions"]');
+  if(tb){tb.insertAdjacentHTML('afterend','<button class="navbtn sub" data-tab="clearing">◐ Smart Clearing</button>');const nb=document.querySelector('.navbtn[data-tab="clearing"]');nb.onclick=()=>showTab('clearing')}
+})();
+let _v34View='changed';
+function v34SetView(v){_v34View=v;renderClearing()}
+function v34ToggleBal(id,v){const s=v34St();if(v)delete s.notInBal[id];else s.notInBal[id]=true;save();renderAll()}
+function renderClearing(){
+  const el=$('clearingBody');if(!el)return;
+  const s=v34St(),now=today(),mk=now.slice(0,7);
+  const pend=v34PendingRows().sort((a,b)=>a.date.localeCompare(b.date));
+  const stuck=pend.filter(t=>daysBetween(t.date,now)>V34_STUCK_DAYS);
+  const C=s.clears.filter(e=>e.kind==='cleared'),R=s.clears.filter(e=>e.kind==='released');
+  const chg=C.filter(e=>Math.abs(e.diff||0)>=0.01);
+  const monthC=C.filter(e=>(e.cDate||'').slice(0,7)===mk),monthChg=monthC.filter(e=>Math.abs(e.diff||0)>=0.01);
+  const monthNet=monthChg.reduce((a,e)=>a+e.diff,0);
+  const avgDays=C.length?C.reduce((a,e)=>a+Math.max(0,e.days||0),0)/C.length:0;
+  const pendOut=pend.filter(t=>Number(t.amount)<0).reduce((a,t)=>a-Number(t.amount),0);
+  const rb=$('v34RevBtn');if(rb){const n=s.pending?((s.pending.pairs||[]).length+(s.pending.released||[]).length+(s.pending.ids||[]).length):0;rb.style.display=n?'':'none';rb.textContent=`Review ${n} waiting`;rb.className=n?'btn primary':'btn'}
+  // patterns: merchants that usually clear for a different amount
+  const byM=new Map();chg.forEach(e=>{const k=cleanVendor(e.merchant);if(!byM.has(k))byM.set(k,[]);byM.get(k).push(e)});
+  const pat=[...byM.entries()].filter(([k,l])=>l.length>=2).map(([k,l])=>{const pct=l.reduce((a,e)=>a+(e.cAmt-e.pAmt)/Math.abs(e.pAmt||1),0)/l.length*-1;return {k,n:l.length,pct,net:l.reduce((a,e)=>a+e.diff,0)}}).sort((a,b)=>Math.abs(b.net)-Math.abs(a.net)).slice(0,8);
+  // accounts with pending charges
+  const cp=v34CashPending(),accts=[...new Map(cp.map(x=>[x.a.id,x.a])).values()];
+  const list=_v34View==='all'?C:_v34View==='changed'?chg:R;
+  const dcls=d=>Math.abs(d)<0.005?'muted':d<0?'bad':'good';
+  const diffTxt=d=>Math.abs(d)<0.005?'same':(d>0?'+':'−')+money(Math.abs(d)).replace('-','');
+  el.innerHTML=`
+  <div class="grid v34four" style="margin-bottom:14px">
+    <div class="card"><div class="kpi-label">Pending now</div><div class="kpi-value">${money(pendOut)}</div><div class="kpi-foot">${pend.length} charge${pend.length===1?'':'s'}${stuck.length?` · <span class="bad">${stuck.length} stuck</span>`:''}</div></div>
+    <div class="card"><div class="kpi-label">Changed at clearing · ${monthShort(mk)}</div><div class="kpi-value ${monthNet<0?'bad':monthNet>0?'good':''}">${monthNet>0?'+':''}${money(monthNet)}</div><div class="kpi-foot">${monthChg.length} of ${monthC.length} cleared for a different amount</div></div>
+    <div class="card"><div class="kpi-label">Released holds</div><div class="kpi-value">${R.length}</div><div class="kpi-foot">Pending charges that never cleared</div></div>
+    <div class="card"><div class="kpi-label">Average time to clear</div><div class="kpi-value">${C.length?avgDays.toFixed(1)+' days':'—'}</div><div class="kpi-foot">${C.length} cleared so far</div></div>
+  </div>
+  <div class="grid two">
+    <div class="card"><h2>⏳ Pending now</h2>${pend.length?`<table><thead><tr><th>Date</th><th>Merchant</th><th>Account</th><th class="money">Amount</th><th>Age</th></tr></thead><tbody>${pend.slice().reverse().map(t=>{const age=daysBetween(t.date,now),b=(state.assignments||[]).find(a=>a.matchedTxnId===t.id),bill=b&&state.bills.find(x=>x.id===b.billId);return `<tr><td>${shortDate(t.date)}</td><td>${esc(t.merchant)}${bill?`<div class="muted" style="font-size:10px">pays ${esc(bill.name)}</div>`:''}</td><td>${esc(t.account)}</td><td class="money">${money(t.amount)}</td><td>${age>V34_STUCK_DAYS?`<span class="pill high">${age}d stuck</span>`:age+'d'}</td></tr>`}).join('')}</tbody></table>${stuck.length?`<div class="note" style="margin-top:8px">Stuck charges have been pending more than ${V34_STUCK_DAYS} days. They're usually holds Monarch never cleaned up. Check them in Monarch and delete them there if the bank shows nothing.</div>`:''}`:'<div class="empty">Nothing pending right now.</div>'}</div>
+    <div class="card"><h2>Cash on hand and pending</h2><div class="note" style="margin-bottom:10px">Most banks' balances already subtract pending charges, so they're listed under Cash on hand but not taken off again. If an account's balance doesn't drop when a charge is still pending, set it to "Subtract pending" and the app will take that account's pending charges off Cash on hand.</div>
+    ${accts.length?`<table><tbody>${accts.map(a=>{const on=!s.notInBal[a.id],amt=cp.filter(x=>x.a.id===a.id).reduce((t,x)=>t+Number(x.t.amount),0);return `<tr><td>${esc(acctLabel(a))}<div class="muted" style="font-size:10px">${money(amt)} pending</div></td><td class="right"><select class="input" style="width:auto" onchange="v34ToggleBal('${a.id}',this.value==='in')"><option value="in" ${on?'selected':''}>Balance includes pending</option><option value="out" ${on?'':'selected'}>Subtract pending</option></select></td></tr>`}).join('')}</tbody></table>`:'<div class="empty">No cash accounts have pending charges right now.</div>'}
+    ${pat.length?`<h3 style="margin-top:16px">Patterns</h3><table><thead><tr><th>Merchant</th><th class="money">Times</th><th class="money">Usual change</th><th class="money">Net</th></tr></thead><tbody>${pat.map(p=>`<tr><td>${esc(p.k)}</td><td class="money">${p.n}</td><td class="money">${p.pct>0?'+':''}${(p.pct*100).toFixed(0)}%</td><td class="money ${dcls(-p.net)}">${diffTxt(-p.net)}</td></tr>`).join('')}</tbody></table><div class="muted" style="font-size:11px;margin-top:4px">Usual change: how much more (+) or less the charge cleared for than it showed while pending.</div>`:''}
+    </div>
+  </div>
+  <div class="card" style="margin-top:14px"><div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h2 style="margin:0">Pending vs cleared</h2><div class="actions"><button class="btn small ${_v34View==='changed'?'primary':''}" onclick="v34SetView('changed')">Changed (${chg.length})</button><button class="btn small ${_v34View==='all'?'primary':''}" onclick="v34SetView('all')">All cleared (${C.length})</button><button class="btn small ${_v34View==='released'?'primary':''}" onclick="v34SetView('released')">Never cleared (${R.length})</button></div></div>
+  ${list.length?`<div style="overflow:auto;margin-top:10px"><table><thead><tr><th>Merchant</th><th>Account</th><th>Pending</th><th class="money">Pending amt</th><th>${_v34View==='released'?'':'Cleared'}</th><th class="money">${_v34View==='released'?'':'Cleared amt'}</th><th class="money">${_v34View==='released'?'':'Difference'}</th><th class="money">${_v34View==='released'?'':'Days'}</th></tr></thead><tbody>${list.slice(0,400).map(e=>`<tr><td>${esc(e.merchant)}${e.seeded?' <span class="muted" style="font-size:10px" title="Matched afterwards from the backup — a best guess">rebuilt</span>':''}${e.noMatch?'<div class="muted" style="font-size:10px">no cleared match found</div>':''}</td><td class="muted" style="font-size:11px">${esc(e.account)}</td><td>${shortDate(e.pDate)}<div class="muted" style="font-size:10px">${esc((e.pStatement||'').slice(0,30))}</div></td><td class="money">${money(e.pAmt)}</td><td>${e.cDate?shortDate(e.cDate):'<span class="pill high">released</span>'}</td><td class="money">${e.cAmt!=null?money(e.cAmt):''}</td><td class="money ${e.diff!=null?dcls(e.diff):''}">${e.diff!=null?diffTxt(e.diff):''}</td><td class="money">${e.days!=null?e.days:''}</td></tr>`).join('')}</tbody></table>${list.length>400?'<div class="muted" style="margin-top:6px">Showing the newest 400.</div>':''}</div>`:`<div class="empty" style="margin-top:10px">${_v34View==='released'?'No released holds yet.':'Nothing yet. This fills in as pending charges clear on future imports.'}</div>`}
+  </div>`;
+}
+const _v34RenderAll=renderAll;
+renderAll=function(){_v34RenderAll();try{if($('clearing')&&$('clearing').classList.contains('active'))renderClearing()}catch(e){console.warn('v34 clearing',e)}};
+/* Settings card: point to Smart Clearing */
+v33RenderCard=(function(prev){return function(){prev();try{const el=$('v33Card');if(!el)return;const s=v34St(),n=s.pending?((s.pending.pairs||[]).length+(s.pending.released||[]).length+(s.pending.ids||[]).length):0;
+  const btn=el.querySelector('button');if(btn)btn.remove();
+  if(n&&!el.querySelector('.v34rv'))el.insertAdjacentHTML('beforeend',`<div class="actions v34rv" style="margin-top:10px"><button class="btn primary" onclick="v34OpenReview()">Review ${n} rows no longer in Monarch</button></div>`);
+  if(!el.querySelector('.v34note'))el.insertAdjacentHTML('beforeend','<div class="muted v34note" style="font-size:11px;margin-top:8px">Pending vs cleared history is on Data ▸ Smart Clearing.</div>');}catch(e){}}})(v33RenderCard);
+/* a review saved by v33 (ids only) becomes a v34 review with pending → cleared pairs */
+let _v34Upgraded=false;
+const _v34RA2=renderAll;
+renderAll=function(){if(!_v34Upgraded&&state&&state.v33&&state.v33.pending){_v34Upgraded=true;try{if(v34UpgradeV33Pending())save()}catch(e){console.warn('v34 upgrade',e)}}_v34RA2()};
+/* dry run for testing (changes nothing) */
+function v34DryRun(text){const F=v34ParseFile(text);if(!F)return null;const P=v34Plan(F);return {fileRows:F.rows.length,hasId:F.hasId,hasPending:F.hasPending,backfill:P.backfill.length,updates:P.updates.length,add:P.add.length,gone:P.gone.length,pairs:P.pairs.length,released:P.released.length,lost:P.lost.length,P}}
+/* ---------- one-time: rebuild history for rows removed by v33 from the backup taken just before ---------- */
+async function v34SeedFromBackup(){
+  const s=v34St();if(s.seeded)return 0;
+  let list=[];try{list=(await idbGetKey(SNAP_KEY))||[]}catch(e){}
+  const snap=list.find(x=>/^Before removing rows no longer in Monarch/.test(x.label||''));
+  s.seeded=new Date().toISOString();
+  if(!snap){save();return 0}
+  let S;try{S=JSON.parse(snap.data)}catch(e){save();return 0}
+  const cur=new Set(state.transactions.map(t=>t.id));
+  const removed=(S.transactions||[]).filter(t=>!cur.has(t.id)&&!isPayPalAcct(t.account));
+  if(!removed.length){save();return 0}
+  const minDate=removed.reduce((m,t)=>t.date<m?t.date:m,'9999'),targets=v34ClearedTargets();
+  const cands=state.transactions.filter(t=>!t.pending&&!targets.has(t.id)&&t.date>=addDays(minDate,-2));
+  const pairs=v34PairUp(removed,cands),paired=new Set(pairs.map(x=>x.p.id));
+  const ev=[];
+  pairs.forEach(({p,c})=>{ev.push(v34Event('cleared',p,c,{seeded:true,at:snap.at}));if(Math.abs(Number(p.amount)-Number(c.amount))>0.004||p.date!==c.date)c.v34was=c.v34was||{amt:Number(p.amount),date:p.date}});
+  removed.filter(t=>!paired.has(t.id)).forEach(t=>ev.push(v34Event('released',t,null,{seeded:true,noMatch:true,at:snap.at})));
+  s.clears=s.clears.concat(ev.sort((a,b)=>String(b.pDate).localeCompare(String(a.pDate)))).slice(0,3000);
+  save();try{renderAll()}catch(e){}
+  return ev.length;
+}
+let _v34SeedTried=false;
+const _v34RA3=renderAll;
+renderAll=function(){_v34RA3();if(!_v34SeedTried&&state&&state.v33&&state.v33.log&&state.v33.log.length&&!(state.v33.seeded)){_v34SeedTried=true;setTimeout(()=>{v34SeedFromBackup().catch(e=>console.warn('v34 seed',e))},1500)}};
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
 document.getElementById('settingsVer').textContent='App version '+APP_VERSION;
