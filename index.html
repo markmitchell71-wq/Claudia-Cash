@@ -568,7 +568,7 @@ tr.clickrow{cursor:pointer}tr.clickrow:hover td{background:rgba(127,127,127,.08)
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.112.0/dist/umd/supabase.js"></script>
 <script>
 const KEY='payCycleBudget_v1';
-const APP_VERSION='v32'; // single source of truth — bump this one line on every delivery
+const APP_VERSION='v33'; // single source of truth — bump this one line on every delivery
 let _lastErrAlert=0;
 function _showErrorPopup(msg){
   const now=Date.now();
@@ -4978,6 +4978,179 @@ async function v31UpdateBtn(h){
   // ?autoload=1 → load without a click when folder access is already allowed (used by the daily scheduled run)
   if(/[?&]autoload=1/.test(location.search))setTimeout(()=>v31LoadLatest({auto:true}),2500);
 })();
+
+
+/* ============================================================
+   v33: Monarch is the source of truth for transactions.
+   1. Every import compares the app against the Monarch file,
+      account by account, inside the dates that file covers.
+      - Rows in the file that the app doesn't have yet are added
+        (two identical charges on the same day are both kept now).
+      - Rows the app has that Monarch no longer has (old pending
+        charges that later posted with a new date, edits or
+        deletions made in Monarch) are removed. Up to 25 at a time
+        go automatically; more than that opens a review list first.
+   2. PayPal copies that have a matching bank/card charge are
+      dropped. The bank/card row keeps PayPal's merchant name.
+      Their keys are remembered so the next import doesn't
+      bring them back. PayPal rows with no twin still count.
+   A backup is still saved before every import.
+   ============================================================ */
+const V33_AUTO_MAX=25;
+function v33St(){if(!state.v33||typeof state.v33!=='object')state.v33={};const s=state.v33;if(!s.ppDropped)s.ppDropped={};if(!s.keep)s.keep=[];if(!s.log)s.log=[];return s}
+function v33Hash(ds,merchant,account,amount){return [ds,merchant,account,amount].join('|').toLowerCase()}
+function v33ParseFile(text){
+  const rows=csvParse(text);if(rows.length<2)return null;
+  const heads=rows[0],out=[],count=new Map(),win=new Map();
+  for(const r of rows.slice(1)){
+    const o={};heads.forEach((h,i)=>o[h]=r[i]||'');
+    const date=pick(o,['Date','Transaction Date','Posted Date']);if(!date)continue;
+    const d=new Date(date);if(isNaN(d))continue;const ds=d.toISOString().slice(0,10);
+    const merchant=pick(o,['Merchant','Original Statement','Description','Name'])||'Unknown';
+    const category=pick(o,['Category'])||'Uncategorized',account=pick(o,['Account','Account Name'])||'',amount=parseAmount(pick(o,['Amount','Transaction Amount']));
+    const hash=v33Hash(ds,merchant,account,amount);
+    out.push({date:ds,merchant,category,account,amount,statement:pick(o,['Original Statement','Description']),notes:pick(o,['Notes','Note']),hash});
+    count.set(hash,(count.get(hash)||0)+1);
+    const w=win.get(account);if(!w)win.set(account,{min:ds,max:ds});else{if(ds<w.min)w.min=ds;if(ds>w.max)w.max=ds}
+  }
+  return {rows:out,count,win};
+}
+/* Work out what an import would do, without changing anything */
+function v33Plan(F){
+  const s=v33St(),T=state.transactions||[],keep=new Set(s.keep);
+  const have=new Map();T.forEach(t=>have.set(t.hash,(have.get(t.hash)||0)+1));
+  const dropped=s.ppDropped;
+  // rows to add: file count minus what the app has minus PayPal copies already dropped
+  const need=new Map();F.count.forEach((c,h)=>{const n=c-(have.get(h)||0)-(dropped[h]||0);if(n>0)need.set(h,n)});
+  const add=[];const left=new Map(need);
+  for(const r of F.rows){const n=left.get(r.hash);if(n>0){add.push(r);left.set(r.hash,n-1)}}
+  // rows Monarch no longer has, inside each account's window in the file
+  const assigned=new Set((state.assignments||[]).filter(a=>a.matchedTxnId).map(a=>a.matchedTxnId));
+  const groups=new Map();
+  for(const t of T){const w=F.win.get(t.account);if(!w||t.date<w.min||t.date>w.max)continue;if(!groups.has(t.hash))groups.set(t.hash,[]);groups.get(t.hash).push(t)}
+  const stale=[];
+  groups.forEach((list,h)=>{
+    const extra=list.length-(F.count.get(h)||0);if(extra<=0)return;
+    // when only some copies are extra, remove the ones not tied to a bill first
+    list.sort((a,b)=>(assigned.has(a.id)?1:0)-(assigned.has(b.id)?1:0));
+    list.slice(0,extra).forEach(t=>{if(!keep.has(t.id))stale.push(t)});
+  });
+  stale.sort((a,b)=>b.date.localeCompare(a.date));
+  // forget dropped PayPal keys Monarch no longer has
+  const forget=[];
+  Object.keys(dropped).forEach(h=>{
+    const c=F.count.get(h)||0;if(c>=(dropped[h]||0))return;
+    const parts=h.split('|');
+    const inWin=[...F.win.entries()].some(([a,w])=>a.toLowerCase()===parts[2]&&parts[0]>=w.min&&parts[0]<=w.max);
+    if(inWin)forget.push([h,c]);
+  });
+  return {add,stale,forget};
+}
+function v33RemoveTxns(ids){
+  const set=new Set(ids);if(!set.size)return 0;
+  const before=state.transactions.length;
+  state.transactions=state.transactions.filter(t=>!set.has(t.id));
+  (state.assignments||[]).forEach(a=>{if(a.matchedTxnId&&set.has(a.matchedTxnId)){a.matchedTxnId=null;if(!a.manual)a.paid=false}});
+  _ppMirrorCache.key='';
+  return before-state.transactions.length;
+}
+/* Drop PayPal copies that have a bank/card twin; keep PayPal's merchant on the twin */
+function v33DropPayPalCopies(){
+  if(state.settings&&state.settings.paypalMirrors===false)return {n:0,amt:0};
+  _ppMirrorCache.key='';const ids=paypalMirrorIds();if(!ids.size)return {n:0,amt:0};
+  v31EnrichPayPalPairs();
+  const s=v33St(),byId=new Map(state.transactions.map(t=>[t.id,t]));
+  let amt=0;const drop=[];
+  ids.forEach(id=>{
+    const p=byId.get(id);if(!p)return;
+    const o=_ppMirrorCache.pairs.get(id);
+    if(o&&!isPayPalAcct(o.account)&&!o.v33pp)o.v33pp={merchant:p.merchant,category:p.category,statement:p.statement||''};
+    s.ppDropped[p.hash]=(s.ppDropped[p.hash]||0)+1;
+    amt+=Math.abs(Number(p.amount)||0);drop.push(id);
+  });
+  const n=v33RemoveTxns(drop);
+  return {n,amt};
+}
+function v33Log(entry){const s=v33St();s.log.unshift(Object.assign({at:new Date().toISOString()},entry));s.log=s.log.slice(0,10)}
+function v33Import(ev){
+  const f=ev.target.files[0];if(!f)return;const rd=new FileReader();
+  rd.onload=()=>{
+    const F=v33ParseFile(rd.result);if(!F||!F.rows.length)return alert('No rows found.');
+    const s=v33St(),P=v33Plan(F);
+    P.add.forEach(r=>state.transactions.push(Object.assign({id:uid()},r)));
+    P.forget.forEach(([h,c])=>{if(c>0)s.ppDropped[h]=c;else delete s.ppDropped[h]});
+    let removed=0,pending=0;
+    if(P.stale.length&&P.stale.length<=V33_AUTO_MAX){removed=v33RemoveTxns(P.stale.map(t=>t.id));s.pending=null}
+    else if(P.stale.length){pending=P.stale.length;s.pending={file:f.name,at:new Date().toISOString(),ids:P.stale.map(t=>t.id)}}
+    else s.pending=null;
+    const pp=v33DropPayPalCopies();
+    state.lastTxnImport=new Date().toISOString();
+    let _rn=0;try{if(typeof applyMerchantRenames==='function')_rn=applyMerchantRenames()}catch(e){}
+    v33Log({file:f.name,added:P.add.length,removed,pending,ppDropped:pp.n});
+    save();runMatching();closeModal('txnImportModal');ev.target.value='';
+    const bits=[`Imported ${P.add.length} new transaction${P.add.length===1?'':'s'}.`];
+    if(removed)bits.push(`Removed ${removed} that Monarch no longer has.`);
+    if(pp.n)bits.push(`Dropped ${pp.n} PayPal duplicate${pp.n===1?'':'s'}.`);
+    if(_rn)bits.push(`Renamed ${_rn} merchant${_rn===1?'':'s'}.`);
+    if(pending)bits.push(`${pending} rows are no longer in Monarch — review them before they're removed.`);
+    alert(bits.join(' '));renderAll();
+    if(pending)setTimeout(v33OpenReview,400);
+  };
+  rd.readAsText(f);
+}
+importTransactions=function(ev){const f=ev&&ev.target&&ev.target.files&&ev.target.files[0];if(!f)return;snapshotState('Before importing '+f.name).finally(()=>v33Import(ev))};
+
+/* ---------- review list for large removals ---------- */
+function v33PendingRows(){const s=v33St();if(!s.pending||!s.pending.ids)return [];const set=new Set(s.pending.ids);return state.transactions.filter(t=>set.has(t.id)).sort((a,b)=>b.date.localeCompare(a.date))}
+function v33OpenReview(){
+  if(!$('v33ReviewModal'))document.body.insertAdjacentHTML('beforeend',`<div id="v33ReviewModal" class="modalback"><div class="modal" style="max-width:900px"><div class="modalhead"><h2>Rows no longer in Monarch</h2><button class="btn small" onclick="closeModal('v33ReviewModal')">Close</button></div><div id="v33ReviewBody"></div></div></div>`);
+  const rows=v33PendingRows(),s=v33St();
+  const out=rows.filter(t=>Number(t.amount)<0).reduce((a,t)=>a-Number(t.amount),0);
+  const years={};rows.forEach(t=>{const y=t.date.slice(0,4);years[y]=(years[y]||0)+1});
+  $('v33ReviewBody').innerHTML=rows.length?`<div class="note" style="margin-bottom:12px">These ${rows.length.toLocaleString()} transactions are in the app but not in your latest Monarch file (${esc(s.pending.file||'')}). Most are old pending charges that later posted with a different date, so they're being counted twice. Together they add ${money(out)} of spending. A backup was saved before this import.<br><span class="muted">By year: ${Object.keys(years).sort().reverse().map(y=>y+': '+years[y]).join(' · ')}</span></div>
+  <div class="actions" style="margin-bottom:12px"><button class="btn primary" onclick="v33ApplyPending()">Remove all ${rows.length.toLocaleString()}</button><button class="btn" onclick="v33KeepPending()">Keep them</button></div>
+  <div style="max-height:55vh;overflow:auto"><table><thead><tr><th>Date</th><th>Merchant</th><th>Account</th><th class="money">Amount</th><th>Statement</th></tr></thead><tbody>${rows.slice(0,600).map(t=>`<tr><td>${fmtDate(t.date)}</td><td>${esc(t.merchant)}</td><td>${esc(t.account)}</td><td class="money">${money(t.amount)}</td><td class="muted" style="font-size:11px">${esc((t.statement||'').slice(0,60))}</td></tr>`).join('')}</tbody></table>${rows.length>600?`<div class="muted" style="margin-top:8px">Showing the newest 600.</div>`:''}</div>`:'<div class="empty">Nothing waiting for review.</div>';
+  openModal('v33ReviewModal');
+}
+function v33ApplyPending(){
+  const s=v33St(),ids=(s.pending&&s.pending.ids)||[];
+  snapshotState('Before removing rows no longer in Monarch').finally(()=>{
+    const n=v33RemoveTxns(ids);s.pending=null;v33Log({review:'removed',removed:n});
+    save();runMatching();renderAll();closeModal('v33ReviewModal');
+    v26Toast(`Removed ${n.toLocaleString()} transaction${n===1?'':'s'} Monarch no longer has.`);
+  });
+}
+function v33KeepPending(){
+  const s=v33St(),ids=(s.pending&&s.pending.ids)||[];
+  s.keep=[...new Set([...(s.keep||[]),...ids])];s.pending=null;v33Log({review:'kept',kept:ids.length});
+  save();renderAll();closeModal('v33ReviewModal');v26Toast('Kept them. They won’t be flagged again.');
+}
+/* ---------- Settings: Monarch sync card ---------- */
+function v33RenderCard(){
+  const pp=$('ppMirrorBody');if(!pp)return;const card=pp.closest('.card');if(!card)return;
+  let el=$('v33Card');if(!el){card.insertAdjacentHTML('afterend','<div class="card" id="v33Card"></div>');el=$('v33Card')}
+  const s=v33St(),pend=v33PendingRows().length,last=s.log[0];
+  const dropped=Object.values(s.ppDropped).reduce((a,b)=>a+b,0);
+  el.innerHTML=`<h2>Monarch sync</h2><div class="note" style="margin-bottom:10px">Each import makes the app match your Monarch file: new rows are added, and rows Monarch no longer has (like old pending charges) are removed. PayPal copies of bank or card charges are dropped, and the bank or card row keeps PayPal's merchant name.</div>
+  <div class="sub">${last?`Last import: ${esc(last.file||'review')} — ${last.added!=null?last.added+' added, ':''}${last.removed||0} removed${last.ppDropped?', '+last.ppDropped+' PayPal duplicates dropped':''}${last.pending?', '+last.pending+' waiting for review':''}.`:'No import with this version yet.'} PayPal duplicates dropped so far: ${dropped.toLocaleString()}.</div>
+  ${pend?`<div class="actions" style="margin-top:10px"><button class="btn primary" onclick="v33OpenReview()">Review ${pend.toLocaleString()} rows no longer in Monarch</button></div>`:''}`;
+}
+const _v33RenderAll=renderAll;
+renderAll=function(){_v33RenderAll();try{v33RenderCard()}catch(e){console.warn('v33 card',e)}};
+/* the bank/card row keeps PayPal's clean merchant name after the PayPal copy is gone */
+const _v33ResolveVendor=resolveVendor;
+resolveVendor=function(t){
+  const r=_v33ResolveVendor(t);
+  try{if(t&&t.v33pp&&r&&r.via==='PayPal'&&t.v33pp.merchant&&!/paypal|apple/i.test(t.v33pp.merchant))return {...r,vendor:cleanVendor(t.v33pp.merchant)}}catch(e){}
+  return r;
+};
+/* Dry run for testing: what the next import of this CSV text would do (changes nothing) */
+function v33DryRun(text){
+  const F=v33ParseFile(text);if(!F)return null;const P=v33Plan(F);
+  _ppMirrorCache.key='';const ids=paypalMirrorIds();
+  const staleNotPP=P.stale.filter(t=>!ids.has(t.id));
+  return {fileRows:F.rows.length,appRows:state.transactions.length,toAdd:P.add.length,toRemove:P.stale.length,toRemoveSpend:Math.round(staleNotPP.filter(t=>Number(t.amount)<0).reduce((a,t)=>a-Number(t.amount),0)),paypalCopies:ids.size,stale:P.stale};
+}
 
 document.getElementById('sbVer').textContent='Safe-to-spend budgeting · '+APP_VERSION;
 document.getElementById('settingsVer').textContent='App version '+APP_VERSION;
